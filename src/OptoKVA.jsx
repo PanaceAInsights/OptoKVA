@@ -1829,18 +1829,6 @@ function AppFooter() {
       <div>
         OptoKVA · clinical visual acuity & contrast sensitivity instrument
       </div>
-      <div className="mt-1">
-        Designed & developed by{' '}
-        <a
-          href="https://www.linkedin.com/in/yagizalpaksoy/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-slate-700 hover:text-slate-900 underline"
-        >
-          Dr. Yagiz Aksoy, MD PhD
-          <Linkedin className="w-3 h-3" />
-        </a>
-      </div>
     </footer>
   );
 }
@@ -2170,7 +2158,7 @@ function AboutScreen({ onBack }) {
           <p>
             OptoKVA was conceived by{' '}
             <strong>Dr. Daya Sharma</strong>, consultant ophthalmologist and cataract, corneal, and refractive
-            surgeon at Sydney Optical Laser Vision, as part of the Cricket NSW visual performance programme.
+            surgeon at Eye & Laser Surgeons, as part of the Cricket NSW visual performance programme.
             Dr. Sharma identified the clinical need for a psychophysical instrument that could differentiate
             supranormal visual performance in elite cricketers beyond the ceiling of standard Snellen charts,
             and defined the clinical protocol including the adaptive staircase methodology, contrast sensitivity
