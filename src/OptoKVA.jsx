@@ -51,7 +51,7 @@ const CONFIG = {
   MIN_RENDER_DIAMETER_PX: 8,
   RESPONSE_TIMEOUT_MS: null, // static phase has no timeout
 
-  // Phase 2 — Kinetic VA (web demo, fidelityTier = DEMO_KINETIC)
+  // Phase 2 -Kinetic VA (web demo, fidelityTier = DEMO_KINETIC)
   KINETIC_START_DISTANCE_M: 18,     // simulated bowler distance
   KINETIC_END_DISTANCE_M: 9,        // stimulus vanishes at halfway-point
   KINETIC_SPEED_MIN_KMH: 40,
@@ -69,7 +69,7 @@ const CONFIG = {
   KINETIC_CUE_FLASH_OFF_MS: 100,
   KINETIC_POST_STIMULUS_RESPONSE_MS: 1500, // input window after stimulus vanishes
 
-  // Phase 3c — Drift detection (DEMO). Variable = lateralDriftPx.
+  // Phase 3c -Drift detection (DEMO). Variable = lateralDriftPx.
   // Staircase descends to find the MINIMUM detectable drift amount.
   DRIFT_START_PX: 80,
   DRIFT_MIN_PX: 0,
@@ -83,7 +83,7 @@ const CONFIG = {
   DRIFT_DEFAULT_LOGMAR: 0.3,
   DRIFT_DEFAULT_SPEED_KMH: 100,
 
-  // Phase 3d — Spin detection (DEMO). Variable = spinRevsPerSec.
+  // Phase 3d -Spin detection (DEMO). Variable = spinRevsPerSec.
   // Descends from a visible rate to find the MINIMUM detectable rotation.
   SPIN_START_REVS: 20,
   SPIN_MIN_REVS: 1,
@@ -106,11 +106,11 @@ const EYE_CONDITIONS = [
   { value: 'OU_LH_STANCE', label: 'OU Left-Handed Stance' },
 ];
 
-// Fidelity tiers — guardrail against web-measured kinetic numbers leaking into clinical claims.
+// Fidelity tiers -guardrail against web-measured kinetic numbers leaking into clinical claims.
 const FIDELITY_TIERS = {
-  CLINICAL_STATIC: 'CLINICAL_STATIC', // static VA / contrast / static seam — web-quality is clinical-grade
-  DEMO_KINETIC:    'DEMO_KINETIC',    // kinetic phases on web — demonstration only
-  DEMO_TRAINING:   'DEMO_TRAINING',   // training mode — intervention not measurement
+  CLINICAL_STATIC: 'CLINICAL_STATIC', // static VA / contrast / static seam -web-quality is clinical-grade
+  DEMO_KINETIC:    'DEMO_KINETIC',    // kinetic phases on web -demonstration only
+  DEMO_TRAINING:   'DEMO_TRAINING',   // training mode -intervention not measurement
 };
 
 // Cricket-ball colour themes (Phase 3a+).
@@ -125,7 +125,7 @@ const BALL_THEMES = {
 const BALL_THEME_KEYS = Object.keys(BALL_THEMES);
 const DEFAULT_BALL_THEME = 'RED_ON_GREEN';
 
-// Phase 3e — Match Condition Schedules (twilight contrast decay).
+// Phase 3e -Match Condition Schedules (twilight contrast decay).
 // The decay fades the seam-vs-ball contrast over session-elapsed time, simulating
 // the visual drop from daylight → dusk → floodlit conditions.
 //
@@ -159,21 +159,21 @@ const TEST_BATTERIES = {
     phases: ['KINETIC_SPEED'],
     tier: 'demo',
     description:
-      'Dynamic visual acuity: a Landolt C grows from a simulated 18m distance to a 9m halfway-point at a configurable ball speed (60–180 km/h), preceded by three 50ms ring-cue flashes. The adaptive engine finds the maximum speed at which the subject can still resolve the gap at a given starting logMAR. Tagged DEMO_KINETIC on the web — browser RAF timing is insufficient for clinical kinetic claims. Re-measure on native iOS before publishing.',
+      'Dynamic visual acuity: a Landolt C grows from a simulated 18m distance to a 9m halfway-point at a configurable ball speed (60–180 km/h), preceded by three 50ms ring-cue flashes. The adaptive engine finds the maximum speed at which the subject can still resolve the gap at a given starting logMAR. Tagged DEMO_KINETIC on the web -browser RAF timing is insufficient for clinical kinetic claims. Re-measure on native iOS before publishing.',
   },
   PHASE3A_SEAM: {
     label: 'Phase 3a · Static cricket-ball seam',
     phases: ['SEAM_STATIC'],
     tier: 'clinical',
     description:
-      'Sport-specific static acuity. Replaces the Landolt-C gap with a cricket-ball seam line (width = D/12, subtending 1 MAR at threshold). Same adaptive staircase, same data pipeline — only the stimulus is cricket-ball-shaped. Themed backdrops (red/day, pink/day-night, white/night) simulate real playing conditions. Clinical-grade. Seam response uses axis-equivalence (either end of the line scores correct).',
+      'Sport-specific static acuity. Replaces the Landolt-C gap with a cricket-ball seam line (width = D/12, subtending 1 MAR at threshold). Same adaptive staircase, same data pipeline -only the stimulus is cricket-ball-shaped. Themed backdrops (red/day, pink/day-night, white/night) simulate real playing conditions. Clinical-grade. Seam response uses axis-equivalence (either end of the line scores correct).',
   },
   PHASE3B_KINETIC_SEAM_DEMO: {
     label: 'Phase 3b · Kinetic cricket-ball seam (DEMO)',
     phases: ['KINETIC_SEAM'],
     tier: 'demo',
     description:
-      'Kinetic version of Phase 3a: an approaching cricket ball whose seam line is the limiting detail. Combines the kinetic-VA staircase with the cricket-ball stimulus. Δ-vs-Phase-2 on the results card reveals stimulus-specific visual advantage — whether the subject handles cricket balls better than abstract Landolt Cs at the same logMAR. DEMO_KINETIC fidelity tier.',
+      'Kinetic version of Phase 3a: an approaching cricket ball whose seam line is the limiting detail. Combines the kinetic-VA staircase with the cricket-ball stimulus. Δ-vs-Phase-2 on the results card reveals stimulus-specific visual advantage -whether the subject handles cricket balls better than abstract Landolt Cs at the same logMAR. DEMO_KINETIC fidelity tier.',
   },
   PHASE3C_DRIFT_DEMO: {
     label: 'Phase 3c · Swing / drift detection (DEMO)',
@@ -187,7 +187,7 @@ const TEST_BATTERIES = {
     phases: ['SPIN'],
     tier: 'demo',
     description:
-      'Spin-axis detection. An approaching cricket ball\'s seam rotates during approach at a configurable rev/s, clockwise or counter-clockwise. The 2AFC staircase finds the minimum detectable rotation rate. Clinical analogue: can the batsman read spin direction off the bowler\'s hand? Response: ← (CCW) or → (CW). Different visual pathway from seam detection — motion perception rather than spatial resolution. DEMO_KINETIC tier.',
+      'Spin-axis detection. An approaching cricket ball\'s seam rotates during approach at a configurable rev/s, clockwise or counter-clockwise. The 2AFC staircase finds the minimum detectable rotation rate. Clinical analogue: can the batsman read spin direction off the bowler\'s hand? Response: ← (CCW) or → (CW). Different visual pathway from seam detection -motion perception rather than spatial resolution. DEMO_KINETIC tier.',
   },
   FULL_STATIC: {
     label: 'Full static · VA100 + Contrast + Seam',
@@ -271,7 +271,7 @@ function ballDiameterPixels(logMAR, distanceM, screenHeightMm, screenHeightPx) {
   return { mar, angleRad, seamMeters, seamMm: seamMeters * 1000, D_meters, D_mm, mmPerPixel, D_pixels };
 }
 
-// Seam line orientations are axes, not vectors — the line "up-right / down-left" is a single seam.
+// Seam line orientations are axes, not vectors -the line "up-right / down-left" is a single seam.
 // Accept either the presented direction or its 180° opposite as a correct response.
 const SEAM_OPPOSITES = {
   right: 'left', left: 'right',
@@ -335,7 +335,7 @@ function applyDecayToSeam(ballHex, seamHex, factor) {
 
 // Reliability tag per spec 5.5.
 function getReliabilityTag(contrast) {
-  if (contrast <= 0.001 + 1e-9) return 'experimental';     // 0.1% — always experimental (8-bit limit)
+  if (contrast <= 0.001 + 1e-9) return 'experimental';     // 0.1% -always experimental (8-bit limit)
   if (contrast < 0.005) return 'caution';                  // 0.25% to <0.5%
   return 'reliable';                                       // ≥0.5%
 }
@@ -631,7 +631,7 @@ function contrastProcessResponse(prevState, isCorrect) {
           lvl.stage = 'CONFIRM';
           lvl.confirmBuffer = [];
         } else {
-          // First trial incorrect at start level — step easier and retry DESCENT.
+          // First trial incorrect at start level -step easier and retry DESCENT.
           const easier = clampLogMAR(lvl.logMAR + 0.05);
           if (easier === lvl.logMAR) {
             // already at cap
@@ -662,7 +662,7 @@ function contrastProcessResponse(prevState, isCorrect) {
         } else {
           const easier = clampLogMAR(lvl.logMAR + 0.05);
           if (easier === lvl.logMAR) {
-            // capped out — accept current
+            // capped out -accept current
             lvl.resultLogMAR = lvl.logMAR;
             lvl.confirmationScore = `${passCount}/${CONFIG.CONTRAST_CONFIRM_TRIALS}`;
             lvl.stage = 'COMPLETE';
@@ -922,12 +922,12 @@ function kineticSpeedForceComplete(state) {
 // of "harder" differ, so we parameterise it.
 //
 // Config:
-//   variable        — e.g. 'driftPx' or 'revsPerSec'
-//   descentStep     — signed; negative means harder value decreases
-//   reversalSteps   — magnitudes (sign is opposite of descentStep)
-//   confirmStep     — magnitude for confirmation-phase steps
-//   minValue/maxValue — clamps
-//   maxTrials       — hard limit
+//   variable        -e.g. 'driftPx' or 'revsPerSec'
+//   descentStep     -signed; negative means harder value decreases
+//   reversalSteps   -magnitudes (sign is opposite of descentStep)
+//   confirmStep     -magnitude for confirmation-phase steps
+//   minValue/maxValue -clamps
+//   maxTrials       -hard limit
 function makeDescendingStaircase(config) {
   const harderDir = Math.sign(config.descentStep); // -1 means descending (values get smaller)
   const clamp = (v) => Math.max(config.minValue, Math.min(config.maxValue, v));
@@ -1071,7 +1071,7 @@ function makeDescendingStaircase(config) {
   return { create, process, applyOverride, forceComplete, getResult, clamp };
 }
 
-// Drift (Phase 3c) staircase — descends to find the minimum detectable drift (px).
+// Drift (Phase 3c) staircase -descends to find the minimum detectable drift (px).
 const driftStaircase = makeDescendingStaircase({
   name: 'DRIFT',
   variable: 'driftPx',
@@ -1086,7 +1086,7 @@ const driftStaircase = makeDescendingStaircase({
   maxTrials: CONFIG.DRIFT_MAX_TRIALS,
 });
 
-// Spin (Phase 3d) staircase — descends to find the minimum detectable rotation (rev/s).
+// Spin (Phase 3d) staircase -descends to find the minimum detectable rotation (rev/s).
 const spinStaircase = makeDescendingStaircase({
   name: 'SPIN',
   variable: 'revsPerSec',
@@ -1194,7 +1194,7 @@ function LandoltCCanvas({
     ctx.fillStyle = ringColor;
     ctx.fill();
 
-    // Explicit inner fill (hole) — never transparent
+    // Explicit inner fill (hole) -never transparent
     ctx.beginPath();
     ctx.arc(0, 0, r - 0.5, 0, Math.PI * 2);
     ctx.fillStyle = innerColor;
@@ -1295,7 +1295,7 @@ function BallCanvas({
 //
 // Cue flashes:
 //   landolt → complete ring (no gap)
-//   ball    → plain coloured disk (no seam) — keeps the seam appearance
+//   ball    → plain coloured disk (no seam) -keeps the seam appearance
 //             as the clear "stimulus is live" signal.
 //
 // Emits onStimulusOnset(perfNow) once, onStimulusEnd(perfNow, frameStats)
@@ -1778,7 +1778,7 @@ function downloadCSV(content, filename) {
 // SECTION 7: UI COMPONENTS
 // ═══════════════════════════════════════════════════════════════
 
-// ------- InfoTooltip — hover (desktop) or click (mobile) reveal -------
+// ------- InfoTooltip -hover (desktop) or click (mobile) reveal -------
 
 function InfoTooltip({ title, children, className = '', align = 'left' }) {
   const [open, setOpen] = useState(false);
@@ -1865,7 +1865,7 @@ const REFERENCE_TABLE = [
 function MathVerifier() {
   return (
     <div className="bg-white rounded-lg border border-slate-300 p-4">
-      <h3 className="font-semibold text-slate-800 mb-2">Math Verification — Reference Table (Spec 2.6)</h3>
+      <h3 className="font-semibold text-slate-800 mb-2">Math Verification -Reference Table (Spec 2.6)</h3>
       <table className="text-xs w-full">
         <thead>
           <tr className="text-slate-500 border-b border-slate-200">
@@ -2010,7 +2010,7 @@ function AboutScreen({ onBack }) {
         <Section title="What this is">
           <p>
             <strong>OptoKVA</strong> is a clinical visual acuity and contrast sensitivity testing instrument,
-            designed for research on the visual abilities of elite athletes — specifically professional cricket
+            designed for research on the visual abilities of elite athletes -specifically professional cricket
             players whose vision is typically better than any standard eye chart can measure. It extends
             classical static VA testing with contrast-sensitivity profiling and sport-specific kinetic tasks
             (approaching cricket balls with readable seams, lateral drift, and spin).
@@ -2024,23 +2024,23 @@ function AboutScreen({ onBack }) {
 
         <Section title="Why a new instrument?">
           <p>
-            A standard Snellen chart stops being useful at 6/6 (logMAR 0.00) — and a huge fraction of elite
+            A standard Snellen chart stops being useful at 6/6 (logMAR 0.00) -and a huge fraction of elite
             cricketers see <strong>6/3 or better</strong>. On a printed chart those players all read the bottom
             row; their real differences are invisible.
           </p>
           <p>
-            OptoKVA uses an <strong>adaptive staircase</strong> — it measures the subject by actively making
+            OptoKVA uses an <strong>adaptive staircase</strong> -it measures the subject by actively making
             the optotype smaller until they fail, rather than stopping at a preprinted floor. A 0.05 logMAR
             resolution (finer than any printed chart) is reached in 10–15 trials. Supranormal vision down to
             logMAR −0.60 (≈ 6/1.5) is measurable.
           </p>
           <p>
-            A second dimension — <strong>contrast sensitivity</strong> — exposes performance differences that
+            A second dimension -<strong>contrast sensitivity</strong> -exposes performance differences that
             are invisible on a full-contrast chart. Two players with identical 6/3 VA can diverge wildly at 10%
             contrast. The functional difference matters on-field, especially at dusk or under floodlights.
           </p>
           <p>
-            A third dimension — <strong>sport-specific stimuli</strong> — replaces the abstract Landolt C with
+            A third dimension -<strong>sport-specific stimuli</strong> -replaces the abstract Landolt C with
             a rendered cricket ball whose seam line is the limiting detail. The correlation between abstract
             and sport-specific thresholds is itself a research question.
           </p>
@@ -2050,7 +2050,7 @@ function AboutScreen({ onBack }) {
           <p>
             <strong>MAR</strong> (Minimum Angle of Resolution, in arcminutes). The smallest angle at which the
             subject can tell a gap is a gap. Normal vision resolves 1 arcminute (6/6). Elite vision resolves
-            0.5 arcminutes (6/3) — half the angle, twice the detail.
+            0.5 arcminutes (6/3) -half the angle, twice the detail.
           </p>
           <p>
             <strong>logMAR = log₁₀(MAR)</strong>. Same measurement on a logarithmic scale. logMAR 0.00 = 6/6,
@@ -2069,12 +2069,12 @@ function AboutScreen({ onBack }) {
           </p>
           <p>
             <strong>Landolt C</strong>. A broken ring with a gap of exactly D/5, in one of 8 directions. Chosen
-            over letters because letters are pattern-matchable from familiarity — the Landolt C gap is pure
+            over letters because letters are pattern-matchable from familiarity -the Landolt C gap is pure
             spatial resolution. 12.5% chance level from 8 options heavily penalises guessing.
           </p>
         </Section>
 
-        <Section title="Methodology — the staircase">
+        <Section title="Methodology -the staircase">
           <p>
             <strong>VA100 staircase</strong> (Phase 1a):
           </p>
@@ -2089,7 +2089,7 @@ function AboutScreen({ onBack }) {
           <p>
             <strong>Contrast-VA sweep</strong> (Phase 1b): a faster descending-then-confirm staircase at each of
             7 contrast levels. Seeded from VA100 result + a contrast-specific delta. Monotonic guardrail: VA
-            cannot get <em>better</em> at lower contrast — if it does, re-verify the current level once before
+            cannot get <em>better</em> at lower contrast -if it does, re-verify the current level once before
             accepting.
           </p>
           <p>
@@ -2100,7 +2100,7 @@ function AboutScreen({ onBack }) {
           </p>
         </Section>
 
-        <Section title="Fidelity tiers — the research safety net">
+        <Section title="Fidelity tiers -the research safety net">
           <p>
             Every trial and every summary CSV row carries a <strong>fidelity_tier</strong> flag. This is the
             single most important guardrail for research validity.
@@ -2108,23 +2108,23 @@ function AboutScreen({ onBack }) {
           <ul className="list-disc list-inside space-y-1 ml-2 text-slate-700">
             <li>
               <span className="font-mono px-1 bg-emerald-100 text-emerald-800 rounded">CLINICAL_STATIC</span>
-              — Phase 1a, 1b, 3a. Static measurements on a calibrated display are clinical-grade. Publishable.
+              -Phase 1a, 1b, 3a. Static measurements on a calibrated display are clinical-grade. Publishable.
             </li>
             <li>
-              <span className="font-mono px-1 bg-rose-100 text-rose-800 rounded">DEMO_KINETIC</span> — Phase 2,
+              <span className="font-mono px-1 bg-rose-100 text-rose-800 rounded">DEMO_KINETIC</span> -Phase 2,
               3b, 3c, 3d on the web. Browser <code>requestAnimationFrame</code> cannot guarantee the
               sub-millisecond timing precision needed for clinical kinetic claims. For design iteration,
               collaborator demos, and concept validation only. Native iOS (with <code>CADisplayLink</code>,
               120 Hz displays, and no GC jitter) re-measures these for publication.
             </li>
             <li>
-              <span className="font-mono px-1 bg-slate-200 text-slate-800 rounded">DEMO_TRAINING</span> —
+              <span className="font-mono px-1 bg-slate-200 text-slate-800 rounded">DEMO_TRAINING</span> -
               reserved for the future Phase 4 training mode, which is an intervention rather than a measurement.
             </li>
           </ul>
           <p>
             Downstream analytics pipelines filter to <code>fidelity_tier = CLINICAL_STATIC</code> for publishable
-            models. DEMO tags propagate through the UI, the results cards, and every CSV row — so a kinetic
+            models. DEMO tags propagate through the UI, the results cards, and every CSV row -so a kinetic
             number measured on the web cannot accidentally contaminate a clinical claim.
           </p>
         </Section>
@@ -2137,12 +2137,12 @@ function AboutScreen({ onBack }) {
             translates mechanically to Swift/Kotlin for native ports).
           </p>
           <ul className="list-disc list-inside space-y-1 ml-2 text-slate-700">
-            <li><strong>Engine layer</strong> — pure functions on plain state objects. No React, no DOM, no side effects. Seeded random orientation picker → reproducible sessions.</li>
-            <li><strong>Renderer layer</strong> — HTML5 Canvas with HiDPI (<code>devicePixelRatio</code>) scaling. Separate components for Landolt C, cricket ball, and kinetic (RAF-driven) rendering.</li>
-            <li><strong>Adapter pattern</strong> — every phase is wrapped in an engine adapter exposing <code>createInitialState</code>, <code>getNextTrial</code>, <code>processResponse</code>, <code>renderStimulus</code>, etc. Adding a new phase means adding one adapter; nothing else needs to change.</li>
-            <li><strong>State management</strong> — <code>useReducer</code> with an explicit phase cursor that walks through <code>session.battery.phases</code>. Zero routing library, zero global state.</li>
-            <li><strong>Data export</strong> — every trial timestamped with ISO-8601, sub-millisecond RT via <code>performance.now()</code>. Trial CSV has ~42 columns; summary CSV has ~22 columns plus a forward-compatible <code>extra_metric_name</code>/<code>extra_metric_value</code> slot for non-logMAR metrics (speed, drift, rev/s).</li>
-            <li><strong>No external API calls</strong> — the app is entirely client-side until the Phase 5 backend ingest is built. Data stays in the browser until CSV is downloaded.</li>
+            <li><strong>Engine layer</strong> -pure functions on plain state objects. No React, no DOM, no side effects. Seeded random orientation picker → reproducible sessions.</li>
+            <li><strong>Renderer layer</strong> -HTML5 Canvas with HiDPI (<code>devicePixelRatio</code>) scaling. Separate components for Landolt C, cricket ball, and kinetic (RAF-driven) rendering.</li>
+            <li><strong>Adapter pattern</strong> -every phase is wrapped in an engine adapter exposing <code>createInitialState</code>, <code>getNextTrial</code>, <code>processResponse</code>, <code>renderStimulus</code>, etc. Adding a new phase means adding one adapter; nothing else needs to change.</li>
+            <li><strong>State management</strong> -<code>useReducer</code> with an explicit phase cursor that walks through <code>session.battery.phases</code>. Zero routing library, zero global state.</li>
+            <li><strong>Data export</strong> -every trial timestamped with ISO-8601, sub-millisecond RT via <code>performance.now()</code>. Trial CSV has ~42 columns; summary CSV has ~22 columns plus a forward-compatible <code>extra_metric_name</code>/<code>extra_metric_value</code> slot for non-logMAR metrics (speed, drift, rev/s).</li>
+            <li><strong>No external API calls</strong> -the app is entirely client-side until the Phase 5 backend ingest is built. Data stays in the browser until CSV is downloaded.</li>
           </ul>
           <p>
             Dependencies: React 18, Tailwind CSS, recharts (for the VA-vs-contrast chart), lucide-react (icons),
@@ -2153,32 +2153,31 @@ function AboutScreen({ onBack }) {
 
         <Section title="Phase map">
           <ul className="list-disc list-inside space-y-1 ml-2 text-slate-700">
-            <li><strong>Phase 1a</strong> VA100 — static visual acuity at 100% contrast.</li>
-            <li><strong>Phase 1b</strong> Contrast-VA — 7-level contrast sensitivity sweep.</li>
-            <li><strong>Phase 2</strong> Kinetic VA — approaching Landolt C at configurable speed.</li>
-            <li><strong>Phase 3a</strong> Static seam — cricket ball with a seam line as the limiting detail.</li>
-            <li><strong>Phase 3b</strong> Kinetic seam — approaching cricket ball with a resolvable seam.</li>
-            <li><strong>Phase 3c</strong> Drift / swing — lateral movement detection during approach.</li>
-            <li><strong>Phase 3d</strong> Spin — rotational axis detection during approach.</li>
-            <li><strong>Phase 3e</strong> Match conditions — themed backdrops + twilight contrast decay schedule.</li>
-            <li><strong>Phase 4</strong> Training mode (not yet implemented) — gamified longitudinal training rather than measurement.</li>
-            <li><strong>Phase 5</strong> Analytics / ML (not yet implemented) — backend ingest, feature store, XGBoost predictors, normative database.</li>
+            <li><strong>Phase 1a</strong> VA100 -static visual acuity at 100% contrast.</li>
+            <li><strong>Phase 1b</strong> Contrast-VA -7-level contrast sensitivity sweep.</li>
+            <li><strong>Phase 2</strong> Kinetic VA -approaching Landolt C at configurable speed.</li>
+            <li><strong>Phase 3a</strong> Static seam -cricket ball with a seam line as the limiting detail.</li>
+            <li><strong>Phase 3b</strong> Kinetic seam -approaching cricket ball with a resolvable seam.</li>
+            <li><strong>Phase 3c</strong> Drift / swing -lateral movement detection during approach.</li>
+            <li><strong>Phase 3d</strong> Spin -rotational axis detection during approach.</li>
+            <li><strong>Phase 3e</strong> Match conditions -themed backdrops + twilight contrast decay schedule.</li>
+            <li><strong>Phase 4</strong> Training mode (not yet implemented) -gamified longitudinal training rather than measurement.</li>
+            <li><strong>Phase 5</strong> Analytics / ML (not yet implemented) -backend ingest, feature store, XGBoost predictors, normative database.</li>
           </ul>
         </Section>
 
         <Section title="Credit & licensing">
           <p>
-            OptoKVA is developed as a research instrument for the Cricket NSW visual performance programme.
-            It is being designed in collaboration with <strong>Dr. Daya Sharma</strong> (ophthalmology / refractive
-            surgery) at the Sydney Optical Laser Vision clinic.
+            OptoKVA was conceived by{' '}
+            <strong>Dr. Daya Sharma</strong>, consultant ophthalmologist and cataract, corneal, and refractive
+            surgeon at Sydney Optical Laser Vision, as part of the Cricket NSW visual performance programme.
+            Dr. Sharma identified the clinical need for a psychophysical instrument that could differentiate
+            supranormal visual performance in elite cricketers beyond the ceiling of standard Snellen charts,
+            and defined the clinical protocol including the adaptive staircase methodology, contrast sensitivity
+            profiling, and sport-specific seam-detection tasks.
           </p>
           <p>
-            The web prototype is intended as a reference implementation and a shareable demo. Native iOS and
-            Android ports follow the same engine design and produce the same CSV schema so cross-platform data
-            is directly comparable.
-          </p>
-          <p>
-            Designed and developed by{' '}
+            The instrument was developed and implemented by{' '}
             <a
               href="https://www.linkedin.com/in/yagizalpaksoy/"
               target="_blank"
@@ -2186,7 +2185,14 @@ function AboutScreen({ onBack }) {
               className="text-slate-900 underline font-semibold"
             >
               Dr. Yagiz Aksoy, MD PhD
-            </a>.
+            </a>
+            , clinician-researcher, who designed the software architecture, built the adaptive engines, the
+            rendering pipeline, the data export system, and the web prototype.
+          </p>
+          <p>
+            The web prototype serves as the reference implementation and a shareable collaborator demo. Native
+            iOS and Android ports will follow the same engine design and produce the same CSV schema so
+            cross-platform data is directly comparable.
           </p>
         </Section>
 
@@ -2491,7 +2497,7 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
             <InfoTooltip title="Choose which phases to run">
               Each battery runs one or more test phases in sequence. Start with <strong>Phase 1</strong> for the
               scientific reference measurement, or pick <strong>Full static</strong> for a complete ~8-minute
-              session. <strong>DEMO</strong>-tagged phases are demonstration-only on the web — RAF timing is
+              session. <strong>DEMO</strong>-tagged phases are demonstration-only on the web -RAF timing is
               insufficient for clinical kinetic claims.
             </InfoTooltip>
           </div>
@@ -2564,7 +2570,7 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
               <div className="mt-2 text-[11px] text-slate-500">
                 Simulated approach: {CONFIG.KINETIC_START_DISTANCE_M}m → {CONFIG.KINETIC_END_DISTANCE_M}m ·
                 travel time at {kineticStartSpeed || 0} km/h ≈{' '}
-                <span className="font-mono">{kineticStartSpeed > 0 ? kineticTravelTimeMs(parseFloat(kineticStartSpeed)).toFixed(0) : '—'} ms</span>
+                <span className="font-mono">{kineticStartSpeed > 0 ? kineticTravelTimeMs(parseFloat(kineticStartSpeed)).toFixed(0) : '-'} ms</span>
                 {' · '}3 × {CONFIG.KINETIC_CUE_FLASH_ON_MS}ms ring cues before each trial
               </div>
             </div>
@@ -2578,7 +2584,7 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
               </div>
               <p className="text-xs text-slate-500 mb-3">
                 Preset combinations of ball colour and backdrop that mirror real playing conditions.
-                The ball-to-background contrast is clinically meaningful — a pink ball at twilight is functionally
+                The ball-to-background contrast is clinically meaningful -a pink ball at twilight is functionally
                 different from the same ball against a plain backdrop.
               </p>
 
@@ -2654,7 +2660,7 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
               </div>
 
               <p className="text-xs text-slate-500 mt-3">
-                <strong>Seam response rule:</strong> a seam is an axis, not a vector — the correctness rule accepts
+                <strong>Seam response rule:</strong> a seam is an axis, not a vector -the correctness rule accepts
                 either the presented direction or its 180° opposite on the 8-direction compass.
                 {(batteryPhases.includes('DRIFT') || batteryPhases.includes('SPIN')) && (
                   <>
@@ -3089,7 +3095,7 @@ function makeKineticSeamEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {
     displayBackgroundColor: (trial) => trial?.backgroundColor ?? theme.bg,
     maxTrialsHint: CONFIG.KINETIC_MAX_TRIALS,
     overrideLabel: 'km/h',
-    compassHint: 'The seam is a line — press either end of the axis (e.g. ↗ and ↙ are both correct for the same seam).',
+    compassHint: 'The seam is a line -press either end of the axis (e.g. ↗ and ↙ are both correct for the same seam).',
     theme,
   };
 }
@@ -3224,7 +3230,7 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     displayBackgroundColor: (trial) => trial?.backgroundColor ?? theme.bg,
     maxTrialsHint: CONFIG.DRIFT_MAX_TRIALS,
     overrideLabel: 'px',
-    compassHint: 'The ball drifts left or right during approach — press ← or →. Other directions count as incorrect.',
+    compassHint: 'The ball drifts left or right during approach -press ← or →. Other directions count as incorrect.',
     theme,
   };
 }
@@ -3366,7 +3372,7 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
 }
 
 // ------- Phase 3a: Static Cricket-Ball Seam Detection -------
-// Uses the VA100 staircase engine unchanged — only the stimulus and the correctness rule change.
+// Uses the VA100 staircase engine unchanged -only the stimulus and the correctness rule change.
 // Parameterised by a ball theme (red/pink/white × day/day-night/night).
 
 function makeSeamStaticEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
@@ -3428,7 +3434,7 @@ function makeSeamStaticEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}
     ),
     displayBackgroundColor: (trial) => trial?.backgroundColor ?? theme.bg,
     maxTrialsHint: CONFIG.VA100_MAX_TRIALS,
-    compassHint: 'The seam is a line — press either end of the axis (e.g. ↗ and ↙ are both correct for the same seam).',
+    compassHint: 'The seam is a line -press either end of the axis (e.g. ↗ and ↙ are both correct for the same seam).',
     theme,
   };
 }
@@ -3696,7 +3702,7 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
         style={{ minHeight: '60vh', backgroundColor: displayBg }}
       >
         {paused ? (
-          <div className="text-slate-500 text-lg">PAUSED — press P to resume</div>
+          <div className="text-slate-500 text-lg">PAUSED -press P to resume</div>
         ) : blank || !currentTrial ? null : canRender ? (
           engineAdapter.renderStimulus(trialForDisplay, displayPipeline, session, {
             onStimulusOnset: handleStimulusOnset,
@@ -3782,7 +3788,7 @@ function ResultsScreen({
     ...(spinTrials || []),
   ];
 
-  // Phase 3e decay summary helper — pulls the schedule name and first/last decay factor
+  // Phase 3e decay summary helper -pulls the schedule name and first/last decay factor
   // out of whatever ball-phase trials exist. Returns null when no decay was active.
   const decaySummaryFor = (trials) => {
     if (!trials || trials.length === 0) return null;
@@ -3898,19 +3904,19 @@ function ResultsScreen({
             <div>
               <div className="text-xs text-slate-500">VA100 logMAR</div>
               <div className="text-3xl font-mono font-bold text-slate-800">
-                {va100Result ? va100Result.logMAR.toFixed(2) : '—'}
+                {va100Result ? va100Result.logMAR.toFixed(2) : '-'}
               </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">VA100 Snellen</div>
               <div className="text-3xl font-mono font-bold text-slate-800">
-                {va100Result ? logMARtoSnellen(va100Result.logMAR, session.distanceM) : '—'}
+                {va100Result ? logMARtoSnellen(va100Result.logMAR, session.distanceM) : '-'}
               </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Seam logMAR</div>
               <div className="text-3xl font-mono font-bold text-slate-800">
-                {seamResult ? seamResult.logMAR.toFixed(2) : '—'}
+                {seamResult ? seamResult.logMAR.toFixed(2) : '-'}
               </div>
             </div>
             <div>
@@ -3976,7 +3982,7 @@ function ResultsScreen({
             <div className="flex items-center gap-3 mb-3">
               <h2 className="font-semibold text-slate-800">Phase 2 · Kinetic VA</h2>
               <span className="px-2 py-0.5 bg-rose-600 text-white text-[10px] rounded font-semibold">DEMO_KINETIC</span>
-              <span className="text-xs text-slate-500">web timing — not clinical-grade</span>
+              <span className="text-xs text-slate-500">web timing -not clinical-grade</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               <div>
@@ -4080,12 +4086,12 @@ function ResultsScreen({
                   {(kineticSeamResult.thresholdSpeedKmh - kineticResult.thresholdSpeedKmh).toFixed(0)} km/h
                 </span>
                 {' · '}
-                positive means the subject can handle the cricket-ball seam at a higher speed than the Landolt C gap at the same logMAR — stimulus-specific advantage.
+                positive means the subject can handle the cricket-ball seam at a higher speed than the Landolt C gap at the same logMAR -stimulus-specific advantage.
               </div>
             )}
             {renderDecayFooter(kineticSeamTrials)}
             <div className="mt-3 text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-800">
-              <strong>Demo only.</strong> Same RAF-timing caveat as Phase 2 — kinetic thresholds must be re-measured on native iOS.
+              <strong>Demo only.</strong> Same RAF-timing caveat as Phase 2 -kinetic thresholds must be re-measured on native iOS.
             </div>
           </div>
         )}
@@ -4231,7 +4237,7 @@ function ResultsScreen({
                   {(seamResult.logMAR - va100Result.logMAR).toFixed(2)} logMAR
                 </span>
                 {' · '}
-                Positive Δ means the subject needed a larger angular detail to identify a cricket-ball seam than to identify a Landolt C gap at full contrast — a functional detail-detection gap.
+                Positive Δ means the subject needed a larger angular detail to identify a cricket-ball seam than to identify a Landolt C gap at full contrast -a functional detail-detection gap.
               </div>
             )}
             {renderDecayFooter(seamTrials)}
@@ -4267,7 +4273,7 @@ function ResultsScreen({
                   <td className="text-right">{va100Result.decimalVA.toFixed(3)}</td>
                   <td className="text-right">{va100Result.totalTrials}</td>
                   <td className="text-center">converged</td>
-                  <td className="text-center">—</td>
+                  <td className="text-center">-</td>
                   <td className="text-center">reliable</td>
                 </tr>
               )}
@@ -4279,8 +4285,8 @@ function ResultsScreen({
                   <td className="text-right">{logMARtoSnellen(r.logMAR, session.distanceM)}</td>
                   <td className="text-right">{r.decimalVA.toFixed(3)}</td>
                   <td className="text-right">{r.trialsCount}</td>
-                  <td className="text-center">{r.confirmationScore ?? '—'}</td>
-                  <td className="text-center">{r.guardrailTriggered ? '●' : '—'}</td>
+                  <td className="text-center">{r.confirmationScore ?? '-'}</td>
+                  <td className="text-center">{r.guardrailTriggered ? '●' : '-'}</td>
                   <td className={`text-center ${
                     r.reliabilityTag === 'experimental' ? 'text-rose-600' :
                     r.reliabilityTag === 'caution' ? 'text-amber-600' : 'text-emerald-600'
@@ -4291,7 +4297,7 @@ function ResultsScreen({
           </table>
           </div>
           <div className="text-xs text-slate-400 mt-2">
-            Fidelity tier: <strong>CLINICAL_STATIC</strong> — static VA and contrast measurements on a calibrated display are clinical-grade.
+            Fidelity tier: <strong>CLINICAL_STATIC</strong> -static VA and contrast measurements on a calibrated display are clinical-grade.
           </div>
         </div>
         )}
@@ -4324,7 +4330,7 @@ function ResultsScreen({
                     <td className="text-right">{t.logMAR.toFixed(2)}</td>
                     <td className="text-right">{t.contrastPercent.toFixed(t.contrastFraction < 0.01 ? 2 : 1)}</td>
                     <td>{t.orientationPresented}</td>
-                    <td>{t.orientationResponded ?? '—'}</td>
+                    <td>{t.orientationResponded ?? '-'}</td>
                     <td className="text-center">{t.isCorrect ? '✓' : '✗'}</td>
                     <td className="text-right">{Math.round(t.reactionTimeMs)}</td>
                     <td className="text-center">{t.isManualOverride ? '●' : ''}</td>
