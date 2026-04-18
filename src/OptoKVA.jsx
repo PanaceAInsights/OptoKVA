@@ -52,7 +52,9 @@ const CONFIG = {
   RESPONSE_TIMEOUT_MS: null, // static phase has no timeout
 
   // Phase 2 -Kinetic VA (web demo, fidelityTier = DEMO_KINETIC)
-  KINETIC_START_DISTANCE_M: 18,     // simulated bowler distance
+  KINETIC_START_DISTANCE_M: 18,     // simulated bowler distance (legacy default)
+  KINETIC_START_DISTANCE_MIN_M: 9,  // can't start closer than the end distance
+  KINETIC_START_DISTANCE_MAX_M: 50, // Daya's request: extended approach for supranormal testing
   KINETIC_END_DISTANCE_M: 9,        // stimulus vanishes at halfway-point
   KINETIC_SPEED_MIN_KMH: 40,
   KINETIC_SPEED_MAX_KMH: 180,
@@ -145,6 +147,27 @@ const MATCH_CONDITION_SCHEDULES = {
 };
 const MATCH_CONDITION_SCHEDULE_KEYS = Object.keys(MATCH_CONDITION_SCHEDULES);
 const DEFAULT_MATCH_CONDITION_SCHEDULE = 'CONSTANT';
+
+// Subject interpupillary distance (IPD) metadata.
+// Recorded on every session. Used today as provenance; required input for future
+// stereo-disparity rendering in SBS mode (simulated ball distance → per-eye disparity).
+// Adult normal range 55-75 mm, median ~63 mm.
+const IPD_DEFAULT_MM = 63;
+const IPD_MIN_MM = 50;
+const IPD_MAX_MM = 80;
+
+// Ball-stimulus variants available on Phase 3a/3b/3c/3d:
+//   'seam': the classic cricket-ball seam line (axis response, 180-deg opposites accepted)
+//   'gap':  filled ball with a Landolt-style gap/notch at one of 8 edge positions
+//           (vector response, full compass, unambiguous 8AFC). Useful for spin testing
+//           because a gap's angular position rotates uniquely around 360 deg, unlike a
+//           seam line which is symmetric every 180 deg.
+const BALL_STIMULUS_KINDS = {
+  seam: { label: 'Seam line (axis, 180-deg symmetric)' },
+  gap:  { label: 'Gap/notch (vector, 8-direction unique)' },
+};
+const BALL_STIMULUS_KIND_KEYS = Object.keys(BALL_STIMULUS_KINDS);
+const DEFAULT_BALL_STIMULUS_KIND = 'seam';
 
 // Display modes for passive-3D-TV-assisted binocular / monocular presentation.
 // When the app is mirrored to a polarised 3D TV in SBS (side-by-side) mode,
@@ -799,10 +822,12 @@ function clampKineticSpeed(v) {
 function createKineticSpeedState(
   fixedLogMAR = CONFIG.KINETIC_DEFAULT_LOGMAR,
   initialSpeedKmh = CONFIG.KINETIC_DEFAULT_START_SPEED_KMH,
+  startDistanceM = CONFIG.KINETIC_START_DISTANCE_M,
 ) {
   return {
     mode: 'KINETIC_SPEED',
     fixedLogMAR,
+    startDistanceM,
     phase: 'DESCENT',
     speedKmh: clampKineticSpeed(initialSpeedKmh),
     reversalIndex: 0,
@@ -1149,19 +1174,21 @@ const spinStaircase = makeDescendingStaircase({
 });
 
 // Travel kinematics helpers used by both the engine and the renderer.
-function kineticTravelTimeMs(speedKmh) {
+// startDistanceM defaults to 18 m (bowler's release, classical setting) but can be
+// configured up to 50 m for extended-approach supranormal testing per Daya's request.
+function kineticTravelTimeMs(speedKmh, startDistanceM = CONFIG.KINETIC_START_DISTANCE_M) {
   const speedMs = speedKmh / 3.6;
-  const dist = CONFIG.KINETIC_START_DISTANCE_M - CONFIG.KINETIC_END_DISTANCE_M;
+  const dist = startDistanceM - CONFIG.KINETIC_END_DISTANCE_M;
   return (dist / speedMs) * 1000;
 }
 
 // Per-frame size factor relative to the size at END distance (max size).
 // At t = 0 → currentDistance = start → factor = end/start (smallest).
 // At t = travelTime → currentDistance = end → factor = 1.0 (largest).
-function kineticSizeFactorAt(elapsedMs, speedKmh) {
+function kineticSizeFactorAt(elapsedMs, speedKmh, startDistanceM = CONFIG.KINETIC_START_DISTANCE_M) {
   const speedMs = speedKmh / 3.6;
   const traveled = speedMs * (elapsedMs / 1000);
-  const currentD = CONFIG.KINETIC_START_DISTANCE_M - traveled;
+  const currentD = startDistanceM - traveled;
   const clamped = Math.max(CONFIG.KINETIC_END_DISTANCE_M, currentD);
   return CONFIG.KINETIC_END_DISTANCE_M / clamped;
 }
@@ -1261,6 +1288,7 @@ function BallCanvas({
   ballColor = '#B11A2B',
   seamColor = '#F5F1E4',
   backgroundColor = null, // null = transparent (display area supplies bg)
+  stimulusKind = 'seam',  // 'seam' (classic cricket ball) | 'gap' (Landolt-style notch)
   className = '',
 }) {
   const canvasRef = useRef(null);
@@ -1301,7 +1329,7 @@ function BallCanvas({
     const cx = displaySize / 2;
     const cy = displaySize / 2;
     const R = D / 2;
-    const seamHalfWidth = D / 24; // seam width = D/12
+    const gapSide = D / 5;  // Landolt-C-equivalent gap = D/5 (1 MAR at threshold)
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -1312,7 +1340,7 @@ function BallCanvas({
     ctx.fillStyle = ballColor;
     ctx.fill();
 
-    // Clip to the ball, then draw the seam rectangle rotated to the presented orientation.
+    // Clip to the ball, then draw the chosen detail rotated to the presented orientation.
     ctx.save();
     ctx.beginPath();
     ctx.arc(0, 0, R, 0, Math.PI * 2);
@@ -1320,11 +1348,21 @@ function BallCanvas({
     const angle = ORIENTATIONS[seamOrientation]?.angle ?? 0;
     ctx.rotate(angle);
     ctx.fillStyle = seamColor;
-    ctx.fillRect(-R, -seamHalfWidth, D, seamHalfWidth * 2);
+    if (stimulusKind === 'gap') {
+      // Landolt-style gap: a small square of contrast colour at the ball's edge.
+      // The gap is D/5 wide, placed centred on the ball's right-most edge at the
+      // base orientation (before rotation). Same angular size as a Landolt C gap,
+      // but the response is vector (direction of the notch), not axis.
+      ctx.fillRect(R - gapSide, -gapSide / 2, gapSide, gapSide);
+    } else {
+      // Classic seam line: a thin stripe across the whole ball (axis response, 180-deg symmetric).
+      const seamHalfWidth = D / 24;
+      ctx.fillRect(-R, -seamHalfWidth, D, seamHalfWidth * 2);
+    }
     ctx.restore();
 
     ctx.restore();
-  }, [diameter, seamOrientation, ballColor, seamColor, backgroundColor]);
+  }, [diameter, seamOrientation, ballColor, seamColor, backgroundColor, stimulusKind]);
 
   return <canvas ref={canvasRef} className={className} />;
 }
@@ -1352,11 +1390,12 @@ function KineticCanvas({
   maxDiameterPx,
   speedKmh,
   orientation,
-  stimulusKind = 'landolt', // 'landolt' | 'ball'
+  stimulusKind = 'landolt',       // 'landolt' | 'ball' | 'gap'
   ringColor = '#000000',
   backgroundColor = '#FFFFFF',
   ballColor,
   seamColor,
+  startDistanceM,                 // configurable approach start (default 18 m, up to 50 m)
   lateralDriftPx = 0,   // Phase 3c: signed lateral offset at animation end (px)
   spinRevsPerSec = 0,   // Phase 3d: signed rotational rate applied to seam (signed)
   onStimulusOnset,
@@ -1384,7 +1423,8 @@ function KineticCanvas({
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
-    const travelMs = kineticTravelTimeMs(speedKmh);
+    const startD = startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M;
+    const travelMs = kineticTravelTimeMs(speedKmh, startD);
     const cueOn = CONFIG.KINETIC_CUE_FLASH_ON_MS;
     const cueOff = CONFIG.KINETIC_CUE_FLASH_OFF_MS;
     const cueCount = CONFIG.KINETIC_CUE_FLASH_COUNT;
@@ -1442,7 +1482,6 @@ function KineticCanvas({
     const drawBallStimulus = (diameter, cx, cy, seamRotationRad) => {
       const D = Math.max(CONFIG.MIN_RENDER_DIAMETER_PX, diameter);
       const R = D / 2;
-      const seamHalfWidth = D / 24;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.beginPath();
@@ -1456,7 +1495,16 @@ function KineticCanvas({
       const angle = (ORIENTATIONS[orientation]?.angle ?? 0) + (seamRotationRad ?? 0);
       ctx.rotate(angle);
       ctx.fillStyle = seamColor ?? '#F5F1E4';
-      ctx.fillRect(-R, -seamHalfWidth, D, seamHalfWidth * 2);
+      if (stimulusKind === 'gap') {
+        // Landolt-style gap at the ball's edge (same angular size as a Landolt C gap).
+        // Advantage over seam for spin testing: a notch rotates uniquely through 360 deg,
+        // whereas a line is symmetric every 180 deg.
+        const gapSide = D / 5;
+        ctx.fillRect(R - gapSide, -gapSide / 2, gapSide, gapSide);
+      } else {
+        const seamHalfWidth = D / 24;
+        ctx.fillRect(-R, -seamHalfWidth, D, seamHalfWidth * 2);
+      }
       ctx.restore();
       ctx.restore();
     };
@@ -1473,10 +1521,11 @@ function KineticCanvas({
       ctx.restore();
     };
 
+    const isBallKind = stimulusKind === 'ball' || stimulusKind === 'gap';
     const drawCue = (diameter, cx, cy) =>
-      stimulusKind === 'ball' ? drawBallCue(diameter, cx, cy) : drawFullRing(diameter, cx, cy);
+      isBallKind ? drawBallCue(diameter, cx, cy) : drawFullRing(diameter, cx, cy);
     const drawStimulus = (diameter, cx, cy, seamRotationRad) =>
-      stimulusKind === 'ball'
+      isBallKind
         ? drawBallStimulus(diameter, cx, cy, seamRotationRad)
         : drawLandolt(diameter, cx, cy);
 
@@ -1523,7 +1572,7 @@ function KineticCanvas({
       }
 
       frameTimestamps.push(now);
-      const factor = kineticSizeFactorAt(stimElapsed, speedKmh);
+      const factor = kineticSizeFactorAt(stimElapsed, speedKmh, startD);
       const D_t = D_at_end * factor;
 
       // Progressive drift: 0 at stimulus onset, full lateralDriftPx at stimulus end.
@@ -1550,7 +1599,7 @@ function KineticCanvas({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maxDiameterPx, speedKmh, orientation, stimulusKind, ringColor, backgroundColor, ballColor, seamColor, lateralDriftPx, spinRevsPerSec]);
+  }, [maxDiameterPx, speedKmh, orientation, stimulusKind, ringColor, backgroundColor, ballColor, seamColor, lateralDriftPx, spinRevsPerSec, startDistanceM]);
 
   return <canvas ref={canvasRef} className={className} />;
 }
@@ -1593,6 +1642,7 @@ function generateTrialCSV(session, trials) {
     'responded_during_stimulus', 'frame_count', 'avg_frame_delta_ms', 'max_frame_delta_ms',
     'match_condition_schedule', 'decay_factor', 'phase_elapsed_ms',
     'display_mode',
+    'ipd_mm', 'kinetic_start_distance_m', 'ball_stimulus_kind',
   ];
   const lines = [csvRow(header)];
   trials.forEach((t) => {
@@ -1642,6 +1692,9 @@ function generateTrialCSV(session, trials) {
       t.decayFactor != null ? t.decayFactor.toFixed(4) : '',
       t.phaseElapsedMs != null ? t.phaseElapsedMs.toFixed(0) : '',
       session.displayMode ?? DEFAULT_DISPLAY_MODE,
+      session.ipdMm ?? IPD_DEFAULT_MM,
+      session.kineticStartDistance ?? CONFIG.KINETIC_START_DISTANCE_M,
+      session.ballStimulusKind ?? DEFAULT_BALL_STIMULUS_KIND,
     ]));
   });
   return lines.join('\n');
@@ -2441,6 +2494,13 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
     initialSession?.matchConditionSchedule ?? DEFAULT_MATCH_CONDITION_SCHEDULE
   );
   const [displayMode, setDisplayMode] = useState(initialSession?.displayMode ?? DEFAULT_DISPLAY_MODE);
+  const [ipdMm, setIpdMm] = useState(initialSession?.ipdMm ?? IPD_DEFAULT_MM);
+  const [kineticStartDistance, setKineticStartDistance] = useState(
+    initialSession?.kineticStartDistance ?? CONFIG.KINETIC_START_DISTANCE_M
+  );
+  const [ballStimulusKind, setBallStimulusKind] = useState(
+    initialSession?.ballStimulusKind ?? DEFAULT_BALL_STIMULUS_KIND
+  );
 
   const pipelineAt0 = useMemo(
     () => diameterPixels(0.0, distanceM, screenHeightMm, screenHeightPx),
@@ -2495,6 +2555,9 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
       plainBackground,
       matchConditionSchedule,
       displayMode,
+      ipdMm: parseFloat(ipdMm) || IPD_DEFAULT_MM,
+      kineticStartDistance: parseFloat(kineticStartDistance) || CONFIG.KINETIC_START_DISTANCE_M,
+      ballStimulusKind,
       kineticLogMAR: parseFloat(kineticLogMAR),
       kineticStartSpeed: parseFloat(kineticStartSpeed),
     });
@@ -2580,6 +2643,19 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
               <div className="text-sm text-slate-700 mb-1">Screen height (px) <span className="text-red-500">*</span></div>
               <input type="number" value={screenHeightPx} min={200} max={6000} step={1}
                      onChange={(e) => setScreenHeightPx(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                     className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
+            </label>
+
+            <label className="block">
+              <div className="text-sm text-slate-700 mb-1 flex items-center gap-1">
+                Subject IPD (mm)
+                <InfoTooltip title="Interpupillary distance">
+                  <p>The subject's interpupillary distance (the horizontal separation between the pupils) in millimetres. Adult normal range 55-75 mm, median around 63 mm.</p>
+                  <p className="mt-1">Recorded on every session for provenance. Required input for future stereo-disparity rendering in SBS mode (simulated ball distance to per-eye horizontal offset). Not yet wired into the rendering pipeline; it's metadata only for now.</p>
+                </InfoTooltip>
+              </div>
+              <input type="number" value={ipdMm} min={IPD_MIN_MM} max={IPD_MAX_MM} step={0.5}
+                     onChange={(e) => setIpdMm(e.target.value === '' ? '' : parseFloat(e.target.value))}
                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm" />
             </label>
           </div>
@@ -2671,11 +2747,29 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
                     className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
                   />
                 </label>
+                <label className="block md:col-span-2">
+                  <div className="text-xs text-slate-700 mb-1 flex items-center gap-1">
+                    Simulated start distance (m)
+                    <InfoTooltip title="Kinetic approach start distance">
+                      <p>Distance at which the simulated ball "starts its approach". The ball then moves toward the subject, reaching the end distance ({CONFIG.KINETIC_END_DISTANCE_M} m - batting-commit point) at the end of travel time. Over that window the angular size scales from end/start to 1.</p>
+                      <p className="mt-1">Default is 18 m (bowler's release). Daya's extended-approach protocol uses 50 m so the ball starts well beyond bowling distance and grows more gradually; useful for supranormal kinetic threshold measurement.</p>
+                    </InfoTooltip>
+                  </div>
+                  <input
+                    type="number"
+                    min={CONFIG.KINETIC_START_DISTANCE_MIN_M}
+                    max={CONFIG.KINETIC_START_DISTANCE_MAX_M}
+                    step={1}
+                    value={kineticStartDistance}
+                    onChange={(e) => setKineticStartDistance(e.target.value)}
+                    className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                  />
+                </label>
               </div>
               <div className="mt-2 text-[11px] text-slate-500">
-                Simulated approach: {CONFIG.KINETIC_START_DISTANCE_M}m → {CONFIG.KINETIC_END_DISTANCE_M}m ·
+                Simulated approach: {kineticStartDistance || CONFIG.KINETIC_START_DISTANCE_M}m → {CONFIG.KINETIC_END_DISTANCE_M}m ·
                 travel time at {kineticStartSpeed || 0} km/h ≈{' '}
-                <span className="font-mono">{kineticStartSpeed > 0 ? kineticTravelTimeMs(parseFloat(kineticStartSpeed)).toFixed(0) : '-'} ms</span>
+                <span className="font-mono">{kineticStartSpeed > 0 ? kineticTravelTimeMs(parseFloat(kineticStartSpeed), parseFloat(kineticStartDistance) || CONFIG.KINETIC_START_DISTANCE_M).toFixed(0) : '-'} ms</span>
                 {' · '}3 × {CONFIG.KINETIC_CUE_FLASH_ON_MS}ms ring cues before each trial
               </div>
             </div>
@@ -2764,9 +2858,39 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
                 )}
               </div>
 
+              <div className="mt-4 pt-3 border-t border-dashed border-slate-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-semibold text-slate-700">Ball stimulus kind</h3>
+                  <InfoTooltip title="Seam vs Gap stimulus">
+                    <p><strong>Seam line</strong> (classic): a straight stitching line across the ball. Response is an axis - either end of the line counts as correct. 4 unique orientations.</p>
+                    <p className="mt-1"><strong>Gap / notch</strong> (Daya's proposal): a filled ball with a small contrasting square cut out at one of 8 edge positions. Response is a vector - 8 unique directions, no axis-equivalence. Better for spin testing because a notch rotates uniquely through 360 deg, while a line repeats every 180 deg.</p>
+                    <p className="mt-1 text-amber-200">Gap size = D/5, same angular size as a Landolt-C gap (1 MAR at threshold), so the sizing math stays rigorous.</p>
+                  </InfoTooltip>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {BALL_STIMULUS_KIND_KEYS.map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setBallStimulusKind(k)}
+                      className={`text-xs px-3 py-2 rounded border ${
+                        ballStimulusKind === k ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      {BALL_STIMULUS_KINDS[k].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <p className="text-xs text-slate-500 mt-3">
-                <strong>Seam response rule:</strong> a seam is an axis, not a vector -the correctness rule accepts
+                <strong>Seam response rule:</strong> a seam is an axis, not a vector - the correctness rule accepts
                 either the presented direction or its 180° opposite on the 8-direction compass.
+                {ballStimulusKind === 'gap' && (
+                  <>
+                    {' '}<strong>Gap stimulus:</strong> response is a vector (the gap's position on the ball), so the
+                    axis-equivalence rule does not apply - only the exact direction counts.
+                  </>
+                )}
                 {(batteryPhases.includes('DRIFT') || batteryPhases.includes('SPIN')) && (
                   <>
                     {' '}<strong>Drift / Spin input:</strong> only the <kbd>←</kbd> and <kbd>→</kbd> compass buttons
@@ -3099,10 +3223,11 @@ const kineticSpeedEngineAdapter = {
   stimulusKind: 'kinetic_landolt',
   fidelityTier: FIDELITY_TIERS.DEMO_KINETIC,
   awaitsOnsetCallback: true, // TestScreen won't enable input until onset fires
-  createInitialState: ({ fixedLogMAR, initialSpeedKmh } = {}) =>
-    createKineticSpeedState(fixedLogMAR, initialSpeedKmh),
+  createInitialState: ({ fixedLogMAR, initialSpeedKmh, startDistanceM } = {}) =>
+    createKineticSpeedState(fixedLogMAR, initialSpeedKmh, startDistanceM),
   getNextTrial: (state, prev) => {
     const n = kineticSpeedGetNextTrial(state, prev);
+    const startD = state.startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M;
     return {
       logMAR: n.logMAR,
       contrast: 1.0,
@@ -3110,7 +3235,8 @@ const kineticSpeedEngineAdapter = {
       ringColor: '#000000',
       backgroundColor: '#FFFFFF',
       speedKmh: n.speedKmh,
-      travelTimeMs: kineticTravelTimeMs(n.speedKmh),
+      startDistanceM: startD,
+      travelTimeMs: kineticTravelTimeMs(n.speedKmh, startD),
     };
   },
   processResponse: (state, correct) => kineticSpeedProcessResponse(state, correct),
@@ -3121,7 +3247,7 @@ const kineticSpeedEngineAdapter = {
   getDisplayMeta: (state) => ({
     phaseName: `KINETIC · ${state.speedKmh.toFixed(0)} km/h`,
     stage: state.phase,
-    progressText: `Trial ${state.totalTrials + 1}/${CONFIG.KINETIC_MAX_TRIALS} · start logMAR ${state.fixedLogMAR.toFixed(2)} · ${state.speedKmh.toFixed(0)} km/h`,
+    progressText: `Trial ${state.totalTrials + 1}/${CONFIG.KINETIC_MAX_TRIALS} · start logMAR ${state.fixedLogMAR.toFixed(2)} · ${state.speedKmh.toFixed(0)} km/h · ${(state.startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M).toFixed(0)}m→${CONFIG.KINETIC_END_DISTANCE_M}m`,
     logMAR: state.fixedLogMAR,
     contrast: 1.0,
     reliabilityTag: 'demo_kinetic',
@@ -3135,6 +3261,7 @@ const kineticSpeedEngineAdapter = {
       speedKmh={trial.speedKmh}
       orientation={trial.orientation}
       stimulusKind="landolt"
+      startDistanceM={trial.startDistanceM}
       ringColor={trial.ringColor}
       backgroundColor={trial.backgroundColor}
       onStimulusOnset={callbacks?.onStimulusOnset}
@@ -3190,13 +3317,14 @@ function makeKineticSeamEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {
     fidelityTier: FIDELITY_TIERS.DEMO_KINETIC,
     awaitsOnsetCallback: true,
     ballTheme: themeKey,
-    createInitialState: ({ fixedLogMAR, initialSpeedKmh } = {}) => {
+    createInitialState: ({ fixedLogMAR, initialSpeedKmh, startDistanceM } = {}) => {
       phaseStartMs = performance.now();
-      return createKineticSpeedState(fixedLogMAR, initialSpeedKmh);
+      return createKineticSpeedState(fixedLogMAR, initialSpeedKmh, startDistanceM);
     },
     getNextTrial: (state, prev) => {
       const n = kineticSpeedGetNextTrial(state, prev);
       const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const startD = state.startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M;
       return {
         logMAR: n.logMAR,
         contrast: 1.0,
@@ -3207,7 +3335,9 @@ function makeKineticSeamEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {
         seamColor,
         ballTheme: themeKey,
         speedKmh: n.speedKmh,
-        travelTimeMs: kineticTravelTimeMs(n.speedKmh),
+        startDistanceM: startD,
+        stimulusKind: options.ballStimulusKind ?? DEFAULT_BALL_STIMULUS_KIND,
+        travelTimeMs: kineticTravelTimeMs(n.speedKmh, startD),
         decayFactor,
         matchConditionSchedule: scheduleKey,
         phaseElapsedMs: elapsedMs,
@@ -3216,6 +3346,7 @@ function makeKineticSeamEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {
     processResponse: (state, correct) => kineticSpeedProcessResponse(state, correct),
     checkResponse: (trial, key) => {
       if (key === 'pass') return false;
+      if (trial.stimulusKind === 'gap') return key === trial.orientation;
       return seamOrientationMatches(trial.orientation, key);
     },
     isComplete: (state) => state.complete,
@@ -3238,7 +3369,8 @@ function makeKineticSeamEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {
         maxDiameterPx={pipeline.D_pixels}
         speedKmh={trial.speedKmh}
         orientation={trial.orientation}
-        stimulusKind="ball"
+        stimulusKind={trial.stimulusKind === 'gap' ? 'gap' : 'ball'}
+        startDistanceM={trial.startDistanceM}
         ringColor={trial.ringColor}
         backgroundColor={trial.backgroundColor}
         ballColor={trial.ballColor}
@@ -3280,12 +3412,13 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     awaitsOnsetCallback: true,
     ballTheme: themeKey,
 
-    createInitialState: ({ fixedLogMAR, fixedSpeedKmh, startDriftPx } = {}) => {
+    createInitialState: ({ fixedLogMAR, fixedSpeedKmh, startDriftPx, startDistanceM } = {}) => {
       phaseStartMs = performance.now();
       return {
         ...driftStaircase.create(startDriftPx),
         fixedLogMAR: fixedLogMAR ?? CONFIG.DRIFT_DEFAULT_LOGMAR,
         fixedSpeedKmh: fixedSpeedKmh ?? CONFIG.DRIFT_DEFAULT_SPEED_KMH,
+        startDistanceM: startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M,
         lastDriftSign: null,
         expectedDriftKey: null,
       };
@@ -3301,6 +3434,7 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
       state.expectedDriftKey = sign < 0 ? 'left' : 'right';
       const signedDriftPx = state.driftPx * sign;
       const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const startD = state.startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M;
       return {
         logMAR: state.fixedLogMAR,
         contrast: 1.0,
@@ -3311,7 +3445,9 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
         seamColor,
         ballTheme: themeKey,
         speedKmh: state.fixedSpeedKmh,
-        travelTimeMs: kineticTravelTimeMs(state.fixedSpeedKmh),
+        startDistanceM: startD,
+        stimulusKind: options.ballStimulusKind ?? DEFAULT_BALL_STIMULUS_KIND,
+        travelTimeMs: kineticTravelTimeMs(state.fixedSpeedKmh, startD),
         lateralDriftPx: signedDriftPx,
         expectedDriftKey: state.expectedDriftKey,
         decayFactor,
@@ -3322,7 +3458,7 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
 
     processResponse: (state, correct) => {
       const next = driftStaircase.process(state, correct);
-      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh };
+      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh, startDistanceM: state.startDistanceM };
     },
 
     checkResponse: (trial, key) => {
@@ -3334,11 +3470,11 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     isComplete: (state) => state.complete,
     applyOverride: (state, value) => {
       const next = driftStaircase.applyOverride(state, value);
-      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh };
+      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh, startDistanceM: state.startDistanceM };
     },
     forceComplete: (state) => {
       const next = driftStaircase.forceComplete(state);
-      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh };
+      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh, startDistanceM: state.startDistanceM };
     },
     getResult: (state) => {
       const base = driftStaircase.getResult(state);
@@ -3371,7 +3507,8 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
         maxDiameterPx={pipeline.D_pixels}
         speedKmh={trial.speedKmh}
         orientation={trial.orientation}
-        stimulusKind="ball"
+        stimulusKind={trial.stimulusKind === 'gap' ? 'gap' : 'ball'}
+        startDistanceM={trial.startDistanceM}
         ringColor={trial.ringColor}
         backgroundColor={trial.backgroundColor}
         ballColor={trial.ballColor}
@@ -3416,12 +3553,13 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     awaitsOnsetCallback: true,
     ballTheme: themeKey,
 
-    createInitialState: ({ fixedLogMAR, fixedSpeedKmh, startRevsPerSec } = {}) => {
+    createInitialState: ({ fixedLogMAR, fixedSpeedKmh, startRevsPerSec, startDistanceM } = {}) => {
       phaseStartMs = performance.now();
       return {
         ...spinStaircase.create(startRevsPerSec),
         fixedLogMAR: fixedLogMAR ?? CONFIG.SPIN_DEFAULT_LOGMAR,
         fixedSpeedKmh: fixedSpeedKmh ?? CONFIG.SPIN_DEFAULT_SPEED_KMH,
+        startDistanceM: startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M,
         lastSpinSign: null,
         expectedSpinKey: null,
       };
@@ -3439,6 +3577,7 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
       state.expectedSpinKey = sign > 0 ? 'left' : 'right';
       const signedRevs = state.revsPerSec * sign;
       const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const startD = state.startDistanceM ?? CONFIG.KINETIC_START_DISTANCE_M;
       return {
         logMAR: state.fixedLogMAR,
         contrast: 1.0,
@@ -3449,7 +3588,9 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
         seamColor,
         ballTheme: themeKey,
         speedKmh: state.fixedSpeedKmh,
-        travelTimeMs: kineticTravelTimeMs(state.fixedSpeedKmh),
+        startDistanceM: startD,
+        stimulusKind: options.ballStimulusKind ?? DEFAULT_BALL_STIMULUS_KIND,
+        travelTimeMs: kineticTravelTimeMs(state.fixedSpeedKmh, startD),
         spinRevsPerSec: signedRevs,
         expectedSpinKey: state.expectedSpinKey,
         decayFactor,
@@ -3460,7 +3601,7 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
 
     processResponse: (state, correct) => {
       const next = spinStaircase.process(state, correct);
-      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh };
+      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh, startDistanceM: state.startDistanceM };
     },
 
     checkResponse: (trial, key) => {
@@ -3472,11 +3613,11 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     isComplete: (state) => state.complete,
     applyOverride: (state, value) => {
       const next = spinStaircase.applyOverride(state, value);
-      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh };
+      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh, startDistanceM: state.startDistanceM };
     },
     forceComplete: (state) => {
       const next = spinStaircase.forceComplete(state);
-      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh };
+      return { ...next, fixedLogMAR: state.fixedLogMAR, fixedSpeedKmh: state.fixedSpeedKmh, startDistanceM: state.startDistanceM };
     },
     getResult: (state) => {
       const base = spinStaircase.getResult(state);
@@ -3509,7 +3650,8 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
         maxDiameterPx={pipeline.D_pixels}
         speedKmh={trial.speedKmh}
         orientation={trial.orientation}
-        stimulusKind="ball"
+        stimulusKind={trial.stimulusKind === 'gap' ? 'gap' : 'ball'}
+        startDistanceM={trial.startDistanceM}
         ringColor={trial.ringColor}
         backgroundColor={trial.backgroundColor}
         ballColor={trial.ballColor}
@@ -3559,6 +3701,7 @@ function makeSeamStaticEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}
         ballColor,
         seamColor,
         ballTheme: themeKey,
+        stimulusKind: options.ballStimulusKind ?? DEFAULT_BALL_STIMULUS_KIND,
         decayFactor,
         matchConditionSchedule: scheduleKey,
         phaseElapsedMs: elapsedMs,
@@ -3567,6 +3710,9 @@ function makeSeamStaticEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}
     processResponse: (state, correct) => va100ProcessResponse(state, correct),
     checkResponse: (trial, key) => {
       if (key === 'pass') return false;
+      // Gap stimulus: vector response (exact direction match only).
+      // Seam stimulus: axis response (180-deg opposites also accepted).
+      if (trial.stimulusKind === 'gap') return key === trial.orientation;
       return seamOrientationMatches(trial.orientation, key);
     },
     isComplete: (state) => state.complete,
@@ -3589,11 +3735,14 @@ function makeSeamStaticEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}
         seamOrientation={trial.orientation}
         ballColor={trial.ballColor}
         seamColor={trial.seamColor}
+        stimulusKind={trial.stimulusKind ?? 'seam'}
       />
     ),
     displayBackgroundColor: (trial) => trial?.backgroundColor ?? theme.bg,
     maxTrialsHint: CONFIG.VA100_MAX_TRIALS,
-    compassHint: 'The seam is a line -press either end of the axis (e.g. ↗ and ↙ are both correct for the same seam).',
+    compassHint: options.ballStimulusKind === 'gap'
+      ? 'The ball has a small gap/notch at the edge. Press the compass direction where the gap is. All 8 directions unique.'
+      : 'The seam is a line - press either end of the axis (e.g. ↗ and ↙ are both correct for the same seam).',
     theme,
   };
 }
@@ -4838,6 +4987,7 @@ export default function OptoKVA() {
       {
         plainBackground: state.session?.plainBackground,
         matchConditionSchedule: state.session?.matchConditionSchedule,
+        ballStimulusKind: state.session?.ballStimulusKind,
       }
     );
     return (
@@ -4860,6 +5010,7 @@ export default function OptoKVA() {
         initialStateArgs={{
           fixedLogMAR: state.session?.kineticLogMAR ?? CONFIG.KINETIC_DEFAULT_LOGMAR,
           initialSpeedKmh: state.session?.kineticStartSpeed ?? CONFIG.KINETIC_DEFAULT_START_SPEED_KMH,
+          startDistanceM: state.session?.kineticStartDistance ?? CONFIG.KINETIC_START_DISTANCE_M,
         }}
         session={state.session}
         fidelityTier={FIDELITY_TIERS.DEMO_KINETIC}
@@ -4874,6 +5025,7 @@ export default function OptoKVA() {
       {
         plainBackground: state.session?.plainBackground,
         matchConditionSchedule: state.session?.matchConditionSchedule,
+        ballStimulusKind: state.session?.ballStimulusKind,
       }
     );
     return (
@@ -4883,6 +5035,7 @@ export default function OptoKVA() {
         initialStateArgs={{
           fixedLogMAR: state.session?.kineticLogMAR ?? CONFIG.KINETIC_DEFAULT_LOGMAR,
           initialSpeedKmh: state.session?.kineticStartSpeed ?? CONFIG.KINETIC_DEFAULT_START_SPEED_KMH,
+          startDistanceM: state.session?.kineticStartDistance ?? CONFIG.KINETIC_START_DISTANCE_M,
         }}
         session={state.session}
         fidelityTier={FIDELITY_TIERS.DEMO_KINETIC}
@@ -4897,6 +5050,7 @@ export default function OptoKVA() {
       {
         plainBackground: state.session?.plainBackground,
         matchConditionSchedule: state.session?.matchConditionSchedule,
+        ballStimulusKind: state.session?.ballStimulusKind,
       }
     );
     return (
@@ -4906,6 +5060,7 @@ export default function OptoKVA() {
         initialStateArgs={{
           fixedLogMAR: state.session?.kineticLogMAR ?? CONFIG.DRIFT_DEFAULT_LOGMAR,
           fixedSpeedKmh: state.session?.kineticStartSpeed ?? CONFIG.DRIFT_DEFAULT_SPEED_KMH,
+          startDistanceM: state.session?.kineticStartDistance ?? CONFIG.KINETIC_START_DISTANCE_M,
         }}
         session={state.session}
         fidelityTier={FIDELITY_TIERS.DEMO_KINETIC}
@@ -4920,6 +5075,7 @@ export default function OptoKVA() {
       {
         plainBackground: state.session?.plainBackground,
         matchConditionSchedule: state.session?.matchConditionSchedule,
+        ballStimulusKind: state.session?.ballStimulusKind,
       }
     );
     return (
@@ -4929,6 +5085,7 @@ export default function OptoKVA() {
         initialStateArgs={{
           fixedLogMAR: state.session?.kineticLogMAR ?? CONFIG.SPIN_DEFAULT_LOGMAR,
           fixedSpeedKmh: state.session?.kineticStartSpeed ?? CONFIG.SPIN_DEFAULT_SPEED_KMH,
+          startDistanceM: state.session?.kineticStartDistance ?? CONFIG.KINETIC_START_DISTANCE_M,
         }}
         session={state.session}
         fidelityTier={FIDELITY_TIERS.DEMO_KINETIC}
