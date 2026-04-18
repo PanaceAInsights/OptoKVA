@@ -40,8 +40,8 @@ const CONFIG = {
   VA100_CONFIRM_PASS: 3,
   VA100_CONFIRM_STEP: 0.05,
   VA100_MAX_TRIALS: 60,
-  CONTRAST_LEVELS: [0.25, 0.10, 0.05, 0.025, 0.01, 0.005, 0.001],
-  CONTRAST_DELTAS: { 0.25: 0.10, 0.10: 0.25, 0.05: 0.35, 0.025: 0.45, 0.01: 0.60, 0.005: 0.70, 0.001: 0.90 },
+  CONTRAST_LEVELS: [0.50, 0.25, 0.10, 0.05, 0.025, 0.01, 0.005, 0.001],
+  CONTRAST_DELTAS: { 0.50: 0.05, 0.25: 0.10, 0.10: 0.25, 0.05: 0.35, 0.025: 0.45, 0.01: 0.60, 0.005: 0.70, 0.001: 0.90 },
   CONTRAST_DESCENT_STEP: -0.10,
   CONTRAST_CONFIRM_TRIALS: 3,
   CONTRAST_CONFIRM_PASS: 2,
@@ -84,13 +84,15 @@ const CONFIG = {
   DRIFT_DEFAULT_SPEED_KMH: 100,
 
   // Phase 3d -Spin detection (DEMO). Variable = spinRevsPerSec.
-  // Descends from a visible rate to find the MINIMUM detectable rotation.
-  SPIN_START_REVS: 20,
+  // Descends from a visible rate (~10 rev/s, like a medium spinner) to the threshold
+  // of perceptibility. Previously started at 20 rev/s which looked visually chaotic
+  // on a web display; lower starting values give cleaner rotation cues.
+  SPIN_START_REVS: 10,
   SPIN_MIN_REVS: 1,
-  SPIN_MAX_REVS: 40,
-  SPIN_DESCENT_STEP: -4,   // slower = harder
-  SPIN_REVERSAL_STEPS: [2, 1.5, 1, 0.5],
-  SPIN_CONFIRM_STEP: 0.5,
+  SPIN_MAX_REVS: 25,
+  SPIN_DESCENT_STEP: -2,   // slower = harder
+  SPIN_REVERSAL_STEPS: [1.5, 1, 0.5, 0.25],
+  SPIN_CONFIRM_STEP: 0.25,
   SPIN_CONFIRM_TRIALS: 3,
   SPIN_CONFIRM_PASS: 2,
   SPIN_MAX_TRIALS: 30,
@@ -518,6 +520,7 @@ function createContrastState(va100LogMAR) {
       confirmationScore: null,
       guardrailTriggered: false,
       guardrailUsed: false,          // prevents repeat guardrail loops
+      notResolved: false,            // true if subject never got a correct answer at this contrast
       complete: false,
     };
   });
@@ -561,9 +564,10 @@ function contrastAdvanceLevel(prevState) {
   // Monotonic guardrail: VA(C_i) must be ≥ VA(C_{i-1}) - tolerance.
   // In logMAR terms: cur.resultLogMAR should be ≥ prev.resultLogMAR - tolerance.
   // If cur.resultLogMAR is much smaller (better) than prev.resultLogMAR, violation.
-  if (idx > 0 && cur.resultLogMAR !== null) {
+  // Skip guardrail for not-resolved levels (no comparable value).
+  if (idx > 0 && cur.resultLogMAR !== null && !cur.notResolved) {
     const prev = state.levels[idx - 1];
-    if (prev.complete && prev.resultLogMAR !== null) {
+    if (prev.complete && prev.resultLogMAR !== null && !prev.notResolved) {
       const diff = cur.resultLogMAR - prev.resultLogMAR;
       if (diff < -CONFIG.CONTRAST_GUARDRAIL_TOLERANCE && !cur.guardrailUsed) {
         // Re-verify at current logMAR with a fresh confirm block.
@@ -605,8 +609,15 @@ function contrastProcessResponse(prevState, isCorrect) {
 
   // Hard trial limit per contrast level
   if (lvl.trialsCount >= CONFIG.CONTRAST_MAX_TRIALS_PER_LEVEL) {
-    lvl.resultLogMAR = lvl.resultLogMAR ?? lvl.lastCorrectLogMAR ?? lvl.logMAR;
-    lvl.confirmationScore = lvl.confirmationScore ?? 'hard-limit';
+    if (lvl.correctCount === 0 && lvl.lastCorrectLogMAR === null) {
+      // Subject never resolved anything at this contrast level.
+      lvl.resultLogMAR = null;
+      lvl.confirmationScore = 'not_resolved';
+      lvl.notResolved = true;
+    } else {
+      lvl.resultLogMAR = lvl.resultLogMAR ?? lvl.lastCorrectLogMAR ?? lvl.logMAR;
+      lvl.confirmationScore = lvl.confirmationScore ?? 'hard-limit';
+    }
     lvl.stage = 'COMPLETE';
     lvl.complete = true;
     state.levels[idx] = lvl;
@@ -634,9 +645,11 @@ function contrastProcessResponse(prevState, isCorrect) {
           // First trial incorrect at start level -step easier and retry DESCENT.
           const easier = clampLogMAR(lvl.logMAR + 0.05);
           if (easier === lvl.logMAR) {
-            // already at cap
-            lvl.resultLogMAR = lvl.logMAR;
-            lvl.confirmationScore = '0-floor';
+            // Subject never got a correct answer at this contrast, even at the easiest level.
+            // Mark as NOT RESOLVED rather than defaulting to a misleading logMAR value.
+            lvl.resultLogMAR = null;
+            lvl.confirmationScore = 'not_resolved';
+            lvl.notResolved = true;
             lvl.stage = 'COMPLETE';
             lvl.complete = true;
             state.levels[idx] = lvl;
@@ -662,9 +675,16 @@ function contrastProcessResponse(prevState, isCorrect) {
         } else {
           const easier = clampLogMAR(lvl.logMAR + 0.05);
           if (easier === lvl.logMAR) {
-            // capped out -accept current
-            lvl.resultLogMAR = lvl.logMAR;
-            lvl.confirmationScore = `${passCount}/${CONFIG.CONTRAST_CONFIRM_TRIALS}`;
+            // Capped at the easiest level and still failed.
+            // If the subject also had no correct answers, flag as not-resolved.
+            if (lvl.correctCount === 0) {
+              lvl.resultLogMAR = null;
+              lvl.confirmationScore = 'not_resolved';
+              lvl.notResolved = true;
+            } else {
+              lvl.resultLogMAR = lvl.logMAR;
+              lvl.confirmationScore = `${passCount}/${CONFIG.CONTRAST_CONFIRM_TRIALS}`;
+            }
             lvl.stage = 'COMPLETE';
             lvl.complete = true;
             state.levels[idx] = lvl;
@@ -686,17 +706,19 @@ function contrastProcessResponse(prevState, isCorrect) {
 
 function contrastGetResults(state) {
   return state.levels.map((lvl) => {
-    const resultLogMAR = lvl.resultLogMAR ?? lvl.logMAR;
+    const notResolved = lvl.notResolved === true;
+    const resultLogMAR = notResolved ? null : (lvl.resultLogMAR ?? lvl.logMAR);
     return {
       contrast: lvl.contrast,
       contrastPercent: lvl.contrast * 100,
       logCS: logCS(lvl.contrast),
       logMAR: resultLogMAR,
-      mar: logMARtoMAR(resultLogMAR),
-      decimalVA: logMARtoDecimalVA(resultLogMAR),
+      mar: resultLogMAR == null ? null : logMARtoMAR(resultLogMAR),
+      decimalVA: resultLogMAR == null ? null : logMARtoDecimalVA(resultLogMAR),
       trialsCount: lvl.trialsCount,
       confirmationScore: lvl.confirmationScore,
       guardrailTriggered: lvl.guardrailTriggered,
+      notResolved,
       reliabilityTag: getReliabilityTag(lvl.contrast),
       isExperimental: getReliabilityTag(lvl.contrast) === 'experimental',
       complete: lvl.complete,
@@ -1644,13 +1666,16 @@ function generateSummaryCSV(session, va100Result, contrastResults, allTrials, se
   // Contrast rows
   (contrastResults || []).forEach((r) => {
     const rts = rtStatsFor((t) => t.phase === 'CONTRAST_VA' && Math.abs(t.contrastFraction - r.contrast) < 1e-9);
+    const nr = r.notResolved || r.logMAR == null;
     lines.push(csvRow([
       session.sessionId, session.subjectId, session.eyeCondition, session.distanceM,
       `CONTRAST_${r.contrastPercent.toFixed(r.contrast < 0.01 ? 2 : 1)}pct`,
       r.contrastPercent.toFixed(3),
       r.logCS.toFixed(4),
-      r.logMAR, r.mar.toFixed(4), r.decimalVA.toFixed(4),
-      logMARtoSnellen(r.logMAR, session.distanceM),
+      nr ? 'N/R' : r.logMAR,
+      nr ? 'N/R' : r.mar.toFixed(4),
+      nr ? 'N/R' : r.decimalVA.toFixed(4),
+      nr ? 'N/R' : logMARtoSnellen(r.logMAR, session.distanceM),
       r.trialsCount, r.confirmationScore ?? '',
       r.guardrailTriggered ? 'true' : 'false',
       r.isExperimental ? 'true' : 'false',
@@ -2728,7 +2753,38 @@ const COMPASS_GLYPHS = {
   down: '↓', downLeft: '↙', left: '←', upLeft: '↖', pass: '·',
 };
 
-function CompassInput({ onResponse, feedbackKey, feedbackCorrect, disabled }) {
+function CompassInput({ onResponse, feedbackKey, feedbackCorrect, disabled, mode = 'compass', binaryLabels }) {
+  // Binary mode: render a 2-button row (left + right) plus a 'can't see' pass button.
+  // Used by drift + spin phases so subjects don't accidentally press an invalid direction.
+  if (mode === 'binary_lr') {
+    const labels = binaryLabels ?? { left: 'LEFT  ←', right: 'RIGHT  →' };
+    const cells = [
+      { key: 'left',  label: labels.left,  style: 'text-lg sm:text-xl' },
+      { key: 'pass',  label: "can't see",  style: 'text-slate-400 italic text-sm' },
+      { key: 'right', label: labels.right, style: 'text-lg sm:text-xl' },
+    ];
+    return (
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-md sm:max-w-xl mx-auto">
+        {cells.map(({ key, label, style }) => {
+          const isFeedback = feedbackKey === key;
+          const fbClass = isFeedback
+            ? feedbackCorrect ? 'bg-emerald-200 border-emerald-500' : 'bg-rose-200 border-rose-500'
+            : 'bg-white hover:bg-slate-100 border-slate-300';
+          return (
+            <button key={key} disabled={disabled} onClick={() => onResponse(key)}
+                    className={`rounded-lg border-2 flex items-center justify-center font-bold transition-colors ${fbClass} ${style} ${
+                      disabled ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    style={{ minHeight: 88 }}
+                    aria-label={key}>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+  // Default: 8-direction compass with center 'can't see' pass button.
   return (
     <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full max-w-xs sm:max-w-md mx-auto">
       {COMPASS_LAYOUT.flat().map((key) => {
@@ -2756,7 +2812,8 @@ function CompassInput({ onResponse, feedbackKey, feedbackCorrect, disabled }) {
 
 function ExaminerStrip({
   meta, trialNumber, maxTrials, session, audioEnabled, onToggleAudio,
-  paused, onTogglePause, onOverride, onSkip, showPanel, onToggleShow, guardrailFlag,
+  paused, onTogglePause, onOverride, onSkip, onUndoLast, canUndo,
+  showPanel, onToggleShow, guardrailFlag,
 }) {
   const [overrideInput, setOverrideInput] = useState('');
   const mar = logMARtoMAR(meta.logMAR);
@@ -2764,7 +2821,7 @@ function ExaminerStrip({
   const reliability = meta.reliabilityTag;
 
   return (
-    <div className="bg-slate-900 text-slate-100 text-xs border-b border-slate-700 overflow-x-auto">
+    <div className="sticky top-0 z-20 bg-slate-900 text-slate-100 text-xs border-b border-slate-700 overflow-x-auto">
       <div className="px-4 py-2 flex items-center gap-3 flex-nowrap min-w-max">
         <button onClick={onToggleShow} className="px-2 py-1 bg-slate-700 rounded hover:bg-slate-600">
           {showPanel ? 'Hide' : 'Examiner'}
@@ -2809,6 +2866,16 @@ function ExaminerStrip({
                      className="w-20 px-1 py-0.5 text-slate-800 rounded" />
               <button type="submit" className="px-2 py-0.5 bg-amber-600 rounded hover:bg-amber-500">Set</button>
             </form>
+            <button
+              onClick={onUndoLast}
+              disabled={!canUndo}
+              className={`px-2 py-0.5 rounded font-medium ${
+                canUndo ? 'bg-slate-600 hover:bg-slate-500 text-white' : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+              }`}
+              title="Undo the last response (e.g. if the wrong key was pressed)"
+            >
+              ↶ Undo last
+            </button>
             <button onClick={onSkip} className="px-2 py-0.5 bg-rose-700 rounded hover:bg-rose-600">End Phase</button>
           </>
         )}
@@ -2995,13 +3062,21 @@ function resolveTheme(themeKey, { plainBackground } = {}) {
 }
 
 // Helper used by ball adapters' getNextTrial: given a theme and a running decay clock,
-// return the seam colour to actually render this trial. Phase-local clock so each phase
-// starts fresh when mounted (the adapter's createInitialState records the start time).
+// return the ball + seam colours to actually render this trial. Phase-local clock so each
+// phase starts fresh when mounted (the adapter's createInitialState records the start time).
+//
+// Decay applies to BOTH contrast axes so the effect is visually obvious:
+//   - seamColor fades toward ballColor (seam-to-ball contrast decreases)
+//   - ballColor fades toward backgroundColor (ball-to-background contrast also decreases)
+// We fade the ball more gently (1 - (1 - factor) * 0.6 = 0.4 + 0.6*factor) so the ball
+// stays visible for longer than the seam detail does. At factor = 1 both return untouched.
 function applyPhaseDecay(theme, scheduleKey, phaseStartMs) {
   const elapsedMs = phaseStartMs ? (performance.now() - phaseStartMs) : 0;
   const factor = computeDecayFactor(scheduleKey, elapsedMs);
-  const seamColor = applyDecayToSeam(theme.ball, theme.seam, factor);
-  return { seamColor, decayFactor: factor, elapsedMs };
+  const ballFactor = 1 - (1 - factor) * 0.6; // gentler ball fade
+  const seamColor = lerpHex(theme.ball, theme.seam, factor);
+  const ballColor = lerpHex(theme.bg, theme.ball, ballFactor);
+  return { ballColor, seamColor, decayFactor: factor, elapsedMs };
 }
 
 // ------- Phase 3b: Kinetic Cricket-Ball Seam Detection (DEMO) -------
@@ -3029,14 +3104,14 @@ function makeKineticSeamEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {
     },
     getNextTrial: (state, prev) => {
       const n = kineticSpeedGetNextTrial(state, prev);
-      const { seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
       return {
         logMAR: n.logMAR,
         contrast: 1.0,
         orientation: n.orientation,
         ringColor: seamColor,
         backgroundColor: theme.bg,
-        ballColor: theme.ball,
+        ballColor,
         seamColor,
         ballTheme: themeKey,
         speedKmh: n.speedKmh,
@@ -3133,14 +3208,14 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
       state.lastDriftSign = sign;
       state.expectedDriftKey = sign < 0 ? 'left' : 'right';
       const signedDriftPx = state.driftPx * sign;
-      const { seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
       return {
         logMAR: state.fixedLogMAR,
         contrast: 1.0,
         orientation,
         ringColor: seamColor,
         backgroundColor: theme.bg,
-        ballColor: theme.ball,
+        ballColor,
         seamColor,
         ballTheme: themeKey,
         speedKmh: state.fixedSpeedKmh,
@@ -3218,7 +3293,9 @@ function makeDriftEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     displayBackgroundColor: (trial) => trial?.backgroundColor ?? theme.bg,
     maxTrialsHint: CONFIG.DRIFT_MAX_TRIALS,
     overrideLabel: 'px',
-    compassHint: 'The ball drifts left or right during approach -press ← or →. Other directions count as incorrect.',
+    compassMode: 'binary_lr',
+    binaryLabels: { left: 'Drifted LEFT', right: 'Drifted RIGHT' },
+    compassHint: 'Report which way the ball drifted during approach. Only left and right are valid responses.',
     theme,
   };
 }
@@ -3269,14 +3346,14 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
       // CW  rotation = negative angle = user presses → ('right')
       state.expectedSpinKey = sign > 0 ? 'left' : 'right';
       const signedRevs = state.revsPerSec * sign;
-      const { seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
       return {
         logMAR: state.fixedLogMAR,
         contrast: 1.0,
         orientation,
         ringColor: seamColor,
         backgroundColor: theme.bg,
-        ballColor: theme.ball,
+        ballColor,
         seamColor,
         ballTheme: themeKey,
         speedKmh: state.fixedSpeedKmh,
@@ -3354,7 +3431,9 @@ function makeSpinEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}) {
     displayBackgroundColor: (trial) => trial?.backgroundColor ?? theme.bg,
     maxTrialsHint: CONFIG.SPIN_MAX_TRIALS,
     overrideLabel: 'rev/s',
-    compassHint: 'Press ← if the seam spins counter-clockwise, → if it spins clockwise. Other directions count as incorrect.',
+    compassMode: 'binary_lr',
+    binaryLabels: { left: 'Spin CCW ↺', right: 'Spin CW ↻' },
+    compassHint: 'Report the direction of rotation of the seam during approach.',
     theme,
   };
 }
@@ -3378,14 +3457,14 @@ function makeSeamStaticEngineAdapter(themeKey = DEFAULT_BALL_THEME, options = {}
     },
     getNextTrial: (state, prev) => {
       const n = va100GetNextTrial(state, prev);
-      const { seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
+      const { ballColor, seamColor, decayFactor, elapsedMs } = applyPhaseDecay(theme, scheduleKey, phaseStartMs);
       return {
         logMAR: n.logMAR,
         contrast: 1.0,
         orientation: n.orientation,
         ringColor: seamColor,
         backgroundColor: theme.bg,
-        ballColor: theme.ball,
+        ballColor,
         seamColor,
         ballTheme: themeKey,
         decayFactor,
@@ -3452,6 +3531,10 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
   currentTrialRef.current = currentTrial;
   const finalizedRef = useRef(false);
   const frameStatsRef = useRef(null); // latest KineticCanvas frame jitter stats
+  // Undo support: stack of snapshots captured before each processResponse call.
+  // Each entry = { state, trials, prevOrientation }. Cleared on manual override / skip.
+  const undoStackRef = useRef([]);
+  const [canUndo, setCanUndo] = useState(false);
   const effectiveTier = engineAdapter.fidelityTier ?? fidelityTier ?? FIDELITY_TIERS.CLINICAL_STATIC;
 
   const diameterFor = useCallback((logMAR) =>
@@ -3598,6 +3681,15 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
       phaseElapsedMs: trial.phaseElapsedMs ?? null,
     };
 
+    // Snapshot pre-response state so the examiner can Undo this trial if the subject
+    // (or operator) pressed the wrong button. Stored before processResponse mutates state.
+    undoStackRef.current.push({
+      state: stateRef.current,
+      trials: trialsRef.current,
+      prevOrientation: currentTrialRef.current?.orientation ?? null,
+    });
+    setCanUndo(true);
+
     const newState = engineAdapter.processResponse(stateRef.current, isCorrect);
     stateRef.current = newState;
     setState(newState);
@@ -3625,16 +3717,25 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
     const onKey = (e) => {
       if (!awaiting || paused) return;
       let key = null;
+      const binaryMode = engineAdapter.compassMode === 'binary_lr';
       switch (e.key) {
-        case 'ArrowUp':    key = 'up'; break;
-        case 'ArrowDown':  key = 'down'; break;
-        case 'ArrowLeft':  key = 'left'; break;
-        case 'ArrowRight': key = 'right'; break;
-        case 'q': case 'Q': key = 'upLeft'; break;
-        case 'e': case 'E': key = 'upRight'; break;
-        case 'z': case 'Z': key = 'downLeft'; break;
-        case 'c': case 'C': key = 'downRight'; break;
+        // Primary directions: arrow keys OR WASD (w/a/s/d) OR WAXD (x for down per Daya's preference)
+        case 'ArrowUp':    case 'w': case 'W':
+          if (binaryMode) return;
+          key = 'up'; break;
+        case 'ArrowDown':  case 's': case 'S': case 'x': case 'X':
+          if (binaryMode) return;
+          key = 'down'; break;
+        case 'ArrowLeft':  case 'a': case 'A': key = 'left'; break;
+        case 'ArrowRight': case 'd': case 'D': key = 'right'; break;
+        // Diagonals: Q E Z C (compass mode only)
+        case 'q': case 'Q': if (binaryMode) return; key = 'upLeft'; break;
+        case 'e': case 'E': if (binaryMode) return; key = 'upRight'; break;
+        case 'z': case 'Z': if (binaryMode) return; key = 'downLeft'; break;
+        case 'c': case 'C': if (binaryMode) return; key = 'downRight'; break;
+        // Pass: space bar
         case ' ':           key = 'pass'; e.preventDefault(); break;
+        // Pause: P
         case 'p': case 'P': setPaused((p) => !p); return;
         default: return;
       }
@@ -3643,6 +3744,24 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [awaiting, paused, handleResponse]);
+
+  // Undo the most recently recorded response. Pops the last snapshot off the stack,
+  // restores engine state + trials, and re-presents the same stimulus so the subject
+  // can respond again. Safe to call during feedback/blank/awaiting windows.
+  const onUndoLast = () => {
+    const snap = undoStackRef.current.pop();
+    if (!snap) return;
+    if (blankTimerRef.current) clearTimeout(blankTimerRef.current);
+    setFeedback(null);
+    setBlank(false);
+    stateRef.current = snap.state;
+    trialsRef.current = snap.trials;
+    setState(snap.state);
+    setTrials(snap.trials);
+    setCanUndo(undoStackRef.current.length > 0);
+    // Present a fresh trial from the restored state
+    startNextTrial(snap.state, snap.prevOrientation);
+  };
 
   const onOverride = (newLogMAR) => {
     const newState = engineAdapter.applyOverride(stateRef.current, newLogMAR);
@@ -3680,6 +3799,8 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
         onTogglePause={() => setPaused((p) => !p)}
         onOverride={onOverride}
         onSkip={onSkip}
+        onUndoLast={onUndoLast}
+        canUndo={canUndo}
         showPanel={showExaminer}
         onToggleShow={() => setShowExaminer((s) => !s)}
         guardrailFlag={meta.guardrailFlag}
@@ -3709,6 +3830,8 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
           feedbackKey={feedback?.key}
           feedbackCorrect={feedback?.correct}
           disabled={!awaiting || paused}
+          mode={engineAdapter.compassMode || 'compass'}
+          binaryLabels={engineAdapter.binaryLabels}
         />
         {engineAdapter.compassHint && (
           <div className="text-center text-xs text-slate-600 mt-2 italic">
@@ -3716,7 +3839,7 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
           </div>
         )}
         <div className="text-center text-[10px] text-slate-400 mt-1">
-          Keys: ↑ ↓ ← → | Q E Z C (diagonals) | Space = can't see | P = pause
+          Keys: ↑ ↓ ← → or W A S/X D | Q E Z C (diagonals) | Space = can't see | P = pause
         </div>
       </div>
     </div>
@@ -3821,6 +3944,9 @@ function ResultsScreen({
       });
     }
     contrastResults.forEach((r) => {
+      // Skip "not resolved" points on the chart - they have no logMAR to plot.
+      // The summary table below still shows them as "N/R".
+      if (r.notResolved || r.logMAR == null) return;
       rows.push({
         contrastLabel: `${r.contrastPercent.toFixed(r.contrast < 0.01 ? 2 : 1)}%`,
         contrastPercent: r.contrastPercent,
@@ -3921,8 +4047,10 @@ function ResultsScreen({
         <div className="bg-white rounded-lg border border-slate-300 p-5 mb-6">
           <h2 className="font-semibold text-slate-800 mb-2">VA vs Contrast</h2>
           <p className="text-xs text-slate-500 mb-3">
-            Higher on the chart = better vision (lower logMAR). The dashed line marks 6/6 (logMAR 0.00).
-            Contrast decreases from left to right. Experimental points (0.1%) are at or beyond 8-bit display limits.
+            Y-axis is inverted so better vision (lower logMAR) appears at the top, worse vision at the bottom.
+            The dashed line at logMAR 0.00 marks 6/6 (Snellen normal). Contrast decreases left to right.
+            Experimental points (0.1%) are at or beyond 8-bit display luminance limits.
+            Missing points ("N/R") mean the subject could not resolve any level at that contrast.
           </p>
           <div style={{ width: '100%', height: 320 }}>
             <ResponsiveContainer>
@@ -3931,9 +4059,17 @@ function ResultsScreen({
                 <XAxis dataKey="contrastLabel" tick={{ fontSize: 12 }} />
                 <YAxis
                   dataKey="logMAR"
-                  domain={[CONFIG.LOGMAR_MAX, CONFIG.LOGMAR_MIN]}
+                  domain={[CONFIG.LOGMAR_MIN, CONFIG.LOGMAR_MAX]}
+                  reversed
                   tick={{ fontSize: 12 }}
-                  label={{ value: 'logMAR (↑ better)', angle: -90, position: 'insideLeft', offset: 10, fontSize: 11 }}
+                  label={{
+                    value: 'logMAR  (better vision \u2191    worse vision \u2193)',
+                    angle: -90,
+                    position: 'insideLeft',
+                    offset: 0,
+                    fontSize: 11,
+                    style: { textAnchor: 'middle' },
+                  }}
                 />
                 <Tooltip
                   formatter={(value, name, ctx) => {
@@ -4265,22 +4401,31 @@ function ResultsScreen({
                   <td className="text-center">reliable</td>
                 </tr>
               )}
-              {contrastResults.map((r) => (
-                <tr key={r.contrast} className="border-b border-slate-100">
-                  <td className="py-1">{r.contrastPercent.toFixed(r.contrast < 0.01 ? 2 : 1)}%</td>
-                  <td className="text-right">{r.logCS.toFixed(2)}</td>
-                  <td className="text-right">{r.logMAR.toFixed(2)}</td>
-                  <td className="text-right">{logMARtoSnellen(r.logMAR, session.distanceM)}</td>
-                  <td className="text-right">{r.decimalVA.toFixed(3)}</td>
-                  <td className="text-right">{r.trialsCount}</td>
-                  <td className="text-center">{r.confirmationScore ?? '-'}</td>
-                  <td className="text-center">{r.guardrailTriggered ? '●' : '-'}</td>
-                  <td className={`text-center ${
-                    r.reliabilityTag === 'experimental' ? 'text-rose-600' :
-                    r.reliabilityTag === 'caution' ? 'text-amber-600' : 'text-emerald-600'
-                  }`}>{r.reliabilityTag}</td>
-                </tr>
-              ))}
+              {contrastResults.map((r) => {
+                const nr = r.notResolved || r.logMAR == null;
+                return (
+                  <tr key={r.contrast} className={`border-b border-slate-100 ${nr ? 'bg-rose-50' : ''}`}>
+                    <td className="py-1">{r.contrastPercent.toFixed(r.contrast < 0.01 ? 2 : 1)}%</td>
+                    <td className="text-right">{r.logCS.toFixed(2)}</td>
+                    <td className={`text-right ${nr ? 'text-rose-700 font-semibold' : ''}`}>
+                      {nr ? 'N/R' : r.logMAR.toFixed(2)}
+                    </td>
+                    <td className={`text-right ${nr ? 'text-rose-700' : ''}`}>
+                      {nr ? 'N/R' : logMARtoSnellen(r.logMAR, session.distanceM)}
+                    </td>
+                    <td className={`text-right ${nr ? 'text-rose-700' : ''}`}>
+                      {nr ? 'N/R' : r.decimalVA.toFixed(3)}
+                    </td>
+                    <td className="text-right">{r.trialsCount}</td>
+                    <td className="text-center">{r.confirmationScore ?? '-'}</td>
+                    <td className="text-center">{r.guardrailTriggered ? '●' : '-'}</td>
+                    <td className={`text-center ${
+                      r.reliabilityTag === 'experimental' ? 'text-rose-600' :
+                      r.reliabilityTag === 'caution' ? 'text-amber-600' : 'text-emerald-600'
+                    }`}>{r.reliabilityTag}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           </div>
