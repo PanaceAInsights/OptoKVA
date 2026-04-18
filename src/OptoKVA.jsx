@@ -146,6 +146,31 @@ const MATCH_CONDITION_SCHEDULES = {
 const MATCH_CONDITION_SCHEDULE_KEYS = Object.keys(MATCH_CONDITION_SCHEDULES);
 const DEFAULT_MATCH_CONDITION_SCHEDULE = 'CONSTANT';
 
+// Display modes for passive-3D-TV-assisted binocular / monocular presentation.
+// When the app is mirrored to a polarised 3D TV in SBS (side-by-side) mode,
+// the TV sends the left half of the source frame to one eye and the right
+// half to the other via passive polarisation. Monocular modes blank one half
+// so that only the target eye receives the stimulus (subject keeps both eyes
+// open, no occluder needed).
+//
+// STANDARD_2D: default, no splitting. Use for any non-3D-TV setup.
+// SBS_MONOCULAR_OD: stimulus rendered to RIGHT half only (reaches right eye).
+// SBS_MONOCULAR_OS: stimulus rendered to LEFT half only (reaches left eye).
+// SBS_BINOCULAR:    identical stimulus to both halves (control condition).
+//
+// Note on half-pixel fidelity: passive 3D TVs in SBS mode interpolate the
+// source frame, so effective per-eye resolution is approximately halved
+// horizontally. Clinical stimuli remain valid but the sizing calibration
+// may need a per-device correction factor the first time a new TV is used.
+const DISPLAY_MODES = {
+  STANDARD_2D:       { label: '2D Standard (any display)',             sbs: false, odActive: true,  osActive: true  },
+  SBS_MONOCULAR_OD:  { label: 'SBS Monocular OD (right eye only)',     sbs: true,  odActive: true,  osActive: false },
+  SBS_MONOCULAR_OS:  { label: 'SBS Monocular OS (left eye only)',      sbs: true,  odActive: false, osActive: true  },
+  SBS_BINOCULAR:     { label: 'SBS Binocular (both eyes, 3D TV)',      sbs: true,  odActive: true,  osActive: true  },
+};
+const DISPLAY_MODE_KEYS = Object.keys(DISPLAY_MODES);
+const DEFAULT_DISPLAY_MODE = 'STANDARD_2D';
+
 // Test batteries available on the setup screen, sorted by phase number.
 // Each entry carries a `description` that the InfoTooltip expands on hover/click.
 const TEST_BATTERIES = {
@@ -1567,6 +1592,7 @@ function generateTrialCSV(session, trials) {
     'kinetic_speed_kmh', 'kinetic_start_m', 'kinetic_end_m', 'kinetic_travel_ms',
     'responded_during_stimulus', 'frame_count', 'avg_frame_delta_ms', 'max_frame_delta_ms',
     'match_condition_schedule', 'decay_factor', 'phase_elapsed_ms',
+    'display_mode',
   ];
   const lines = [csvRow(header)];
   trials.forEach((t) => {
@@ -1615,6 +1641,7 @@ function generateTrialCSV(session, trials) {
       t.matchConditionSchedule ?? '',
       t.decayFactor != null ? t.decayFactor.toFixed(4) : '',
       t.phaseElapsedMs != null ? t.phaseElapsedMs.toFixed(0) : '',
+      session.displayMode ?? DEFAULT_DISPLAY_MODE,
     ]));
   });
   return lines.join('\n');
@@ -2164,6 +2191,39 @@ function AboutScreen({ onBack }) {
           </p>
         </Section>
 
+        <Section title="Display modes: 2D Standard vs SBS (3D TV)">
+          <p>
+            OptoKVA runs in two rendering modes. The default - <strong>2D Standard</strong> - works on any display
+            (laptop, iPad, external monitor) and is used for all clinical testing.
+          </p>
+          <p>
+            The <strong>SBS (side-by-side)</strong> modes are designed for use with a passive 3D TV (e.g. LG Cinema 3D)
+            in SBS 3D input mode. The app splits the source frame into a left and right half; the TV's polarisation
+            routes each half to one eye via the subject's polarised glasses. Three SBS sub-modes:
+          </p>
+          <ul className="list-disc list-inside space-y-1 ml-2 text-slate-700">
+            <li><strong>SBS Monocular OD</strong> - stimulus rendered to the right half only. Reaches the right eye while
+              the left eye sees a blank scene. Useful for monocular testing <em>without</em> a physical eye patch,
+              subject in natural binocular posture.</li>
+            <li><strong>SBS Monocular OS</strong> - mirror of the above for the left eye.</li>
+            <li><strong>SBS Binocular</strong> - identical stimulus to both halves. Control condition for comparing
+              against monocular SBS with the same rendering pipeline.</li>
+          </ul>
+          <p>
+            Every trial CSV row is stamped with the <code>display_mode</code> column so downstream analysis can
+            separate SBS-collected data from standard-2D-collected data. Passive 3D TVs interpolate SBS frames, so
+            effective per-eye resolution is approximately halved horizontally. First-time calibration on a new TV
+            may require a correction factor; verify a known optotype's physical size with a ruler against the TV
+            and report any mismatch.
+          </p>
+          <p>
+            <strong>Clinical caveat:</strong> consumer passive 3D does not deliver clinical-grade stereo disparity
+            or frame-synchronous dichoptic presentation. The SBS modes are valid for monocular acuity and
+            contrast testing (where the psychophysics doesn't depend on inter-eye timing) but should not be used
+            as a clinical stereopsis instrument.
+          </p>
+        </Section>
+
         <Section title="Phase map">
           <ul className="list-disc list-inside space-y-1 ml-2 text-slate-700">
             <li><strong>Phase 1a</strong> VA100 -static visual acuity at 100% contrast.</li>
@@ -2380,6 +2440,7 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
   const [matchConditionSchedule, setMatchConditionSchedule] = useState(
     initialSession?.matchConditionSchedule ?? DEFAULT_MATCH_CONDITION_SCHEDULE
   );
+  const [displayMode, setDisplayMode] = useState(initialSession?.displayMode ?? DEFAULT_DISPLAY_MODE);
 
   const pipelineAt0 = useMemo(
     () => diameterPixels(0.0, distanceM, screenHeightMm, screenHeightPx),
@@ -2433,6 +2494,7 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
       ballTheme,
       plainBackground,
       matchConditionSchedule,
+      displayMode,
       kineticLogMAR: parseFloat(kineticLogMAR),
       kineticStartSpeed: parseFloat(kineticStartSpeed),
     });
@@ -2463,11 +2525,41 @@ function SetupScreen({ initialSession, onStart, onOpenHarness, onOpenAbout }) {
             </label>
 
             <label className="block">
-              <div className="text-sm text-slate-700 mb-1">Eye condition</div>
+              <div className="text-sm text-slate-700 mb-1 flex items-center gap-1">
+                Eye condition
+                <InfoTooltip title="Eye condition">
+                  <p>Which eye(s) the subject is viewing with during the session. OD = right eye only, OS = left eye only, OU = both eyes.</p>
+                  <p className="mt-1">The two <strong>stance</strong> options (OU Right-Handed / OU Left-Handed) tag the session with batting stance so leading-eye function can be separated from trailing-eye function in downstream analysis.</p>
+                  <p className="mt-1 text-amber-200">Occluding an eye with a patch is the clinical convention. If you have a passive 3D TV, the SBS Monocular display modes below can present the stimulus to one eye only without a patch.</p>
+                </InfoTooltip>
+              </div>
               <select value={eyeCondition} onChange={(e) => setEyeCondition(e.target.value)}
                       className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
                 {EYE_CONDITIONS.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
               </select>
+            </label>
+
+            <label className="block md:col-span-2">
+              <div className="text-sm text-slate-700 mb-1 flex items-center gap-1">
+                Display mode
+                <InfoTooltip title="Display mode (3D TV support)">
+                  <p><strong>2D Standard</strong> - the normal rendering mode for any display. Use this unless you're running the app mirrored to a passive 3D TV in SBS (side-by-side) mode.</p>
+                  <p className="mt-1"><strong>SBS Monocular OD / OS</strong> - renders the stimulus only in the right or left half of the source frame. When mirrored to an LG/other passive 3D TV set to SBS 3D mode, only the target eye receives the stimulus via polarised glasses. Lets you run monocular testing without a physical eye patch and with the subject in natural binocular posture.</p>
+                  <p className="mt-1"><strong>SBS Binocular</strong> - identical stimulus in both halves. Functions as a control condition for comparing against monocular SBS with the same rendering pipeline.</p>
+                  <p className="mt-2 text-amber-200">Note: passive 3D TVs interpolate SBS frames, so effective per-eye resolution is approximately halved. The first time you use a new TV, verify a known optotype size with a ruler at the display and let us know if calibration needs a correction factor.</p>
+                </InfoTooltip>
+              </div>
+              <select value={displayMode} onChange={(e) => setDisplayMode(e.target.value)}
+                      className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white">
+                {DISPLAY_MODE_KEYS.map((k) => (
+                  <option key={k} value={k}>{DISPLAY_MODES[k].label}</option>
+                ))}
+              </select>
+              {displayMode !== 'STANDARD_2D' && (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  SBS mode tagged in every trial CSV row. Requires the source frame to be mirrored to a passive 3D TV (LG Cinema 3D or equivalent) set to SBS 3D input mode.
+                </p>
+              )}
             </label>
 
             <label className="block">
@@ -3806,23 +3898,54 @@ function TestScreen({ engineAdapter, initialStateArgs, session, fidelityTier, on
         guardrailFlag={meta.guardrailFlag}
       />
 
-      <div
-        className="flex-1 flex items-center justify-center relative transition-colors"
-        style={{ minHeight: '60vh', backgroundColor: displayBg }}
-      >
-        {paused ? (
-          <div className="text-slate-500 text-lg">PAUSED -press P to resume</div>
-        ) : blank || !currentTrial ? null : canRender ? (
-          engineAdapter.renderStimulus(trialForDisplay, displayPipeline, session, {
-            onStimulusOnset: handleStimulusOnset,
-            onStimulusEnd: handleStimulusEnd,
-          })
-        ) : (
-          <div className="text-red-600 text-sm">
-            Stimulus too small for display ({displayPipeline.D_pixels.toFixed(1)}px)
+      {(() => {
+        const displayModeKey = session?.displayMode ?? DEFAULT_DISPLAY_MODE;
+        const mode = DISPLAY_MODES[displayModeKey] ?? DISPLAY_MODES[DEFAULT_DISPLAY_MODE];
+        const stimulus =
+          paused ? (
+            <div className="text-slate-500 text-lg">PAUSED - press P to resume</div>
+          ) : blank || !currentTrial ? null : canRender ? (
+            engineAdapter.renderStimulus(trialForDisplay, displayPipeline, session, {
+              onStimulusOnset: handleStimulusOnset,
+              onStimulusEnd: handleStimulusEnd,
+            })
+          ) : (
+            <div className="text-red-600 text-sm">
+              Stimulus too small for display ({displayPipeline.D_pixels.toFixed(1)}px)
+            </div>
+          );
+
+        // SBS split rendering for passive-3D-TV monocular/binocular testing.
+        // Left half → left eye (OS), right half → right eye (OD).
+        if (mode.sbs) {
+          return (
+            <div
+              className="flex-1 relative transition-colors grid grid-cols-2"
+              style={{ minHeight: '60vh', backgroundColor: displayBg }}
+              data-display-mode={displayModeKey}
+            >
+              {/* LEFT half (OS - left eye) */}
+              <div className="flex items-center justify-center border-r border-slate-200/20" style={{ backgroundColor: displayBg }}>
+                {mode.osActive ? stimulus : null}
+              </div>
+              {/* RIGHT half (OD - right eye) */}
+              <div className="flex items-center justify-center" style={{ backgroundColor: displayBg }}>
+                {mode.odActive ? stimulus : null}
+              </div>
+            </div>
+          );
+        }
+
+        // Standard 2D: single centred stimulus, unchanged legacy behaviour.
+        return (
+          <div
+            className="flex-1 flex items-center justify-center relative transition-colors"
+            style={{ minHeight: '60vh', backgroundColor: displayBg }}
+          >
+            {stimulus}
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       <div className="bg-slate-50 border-t border-slate-200 p-4">
         <CompassInput
